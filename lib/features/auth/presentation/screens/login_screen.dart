@@ -1,5 +1,4 @@
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -95,7 +94,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textInputAction: TextInputAction.done,
                       decoration: InputDecoration(
                         labelText: 'phoneLabel'.tr(),
-                        hintText: 'phoneHint'.tr(),
                         prefixIcon: const Icon(Icons.phone_outlined),
                       ),
                       inputFormatters: [
@@ -126,17 +124,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       ),
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
-                    if (kDebugMode) ...[
-                      const SizedBox(height: AppSpacing.xs),
-                      Text(
-                        loginState.usedDevClientRegistration
-                            ? 'devClientRegistrationHint'.tr()
-                            : 'devOtpHint'.tr(),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppColors.warningAmber,
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: AppSpacing.md),
                     TextField(
                       controller: _otpController,
@@ -145,7 +132,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       maxLength: 6,
                       decoration: InputDecoration(
                         labelText: 'otpLabel'.tr(),
-                        hintText: 'otpHint'.tr(),
                         prefixIcon: const Icon(Icons.lock_outline),
                         counterText: '',
                       ),

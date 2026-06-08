@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Внутренняя документация и API-контракты — не публикуем в репозиторий
+/docs/
+swagger.json
+doc.md
+documentation.md
+chef_supervisor_real_api_contract.md
