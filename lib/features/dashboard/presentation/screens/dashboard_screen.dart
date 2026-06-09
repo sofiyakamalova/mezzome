@@ -1,12 +1,16 @@
+import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
 import 'package:mezzome/features/dashboard/presentation/providers/dashboard_notifier.dart';
+import 'package:mezzome/features/dashboard/presentation/providers/dashboard_state.dart';
 import 'package:mezzome/features/dishes/data/models/plan_variance_model.dart';
 import 'package:mezzome/features/dishes/data/repository/dishes_repository.dart';
 
@@ -67,7 +71,7 @@ class DashboardScreen extends ConsumerWidget {
       body: asyncState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, stackTrace) =>
-            Center(child: Text('dashboardLoadError'.tr())),
+            _DashboardError(error: error, onRetry: notifier.refresh),
         data: (state) {
           final data = state.data;
           return Column(
@@ -84,7 +88,7 @@ class DashboardScreen extends ConsumerWidget {
                     : RefreshIndicator(
                         color: ThemePalette.accent(context),
                         onRefresh: notifier.refresh,
-                        child: _DashboardContent(data: data),
+                        child: _DashboardContent(state: state),
                       ),
               ),
             ],
@@ -95,21 +99,440 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _DashboardContent extends StatelessWidget {
-  const _DashboardContent({required this.data});
+/// Экран ошибки дашборда — показывает реальную причину (403 / код / сообщение),
+/// а не общий текст, чтобы было видно, почему «пусто».
+class _DashboardError extends StatelessWidget {
+  const _DashboardError({required this.error, required this.onRetry});
 
-  final ManagerDashboardModel data;
+  final Object error;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
+    final e = error;
+    String detail;
+    if (e is DioException) {
+      final status = e.response?.statusCode;
+      if (status == 403 || isApiForbidden(e)) {
+        detail = 'dashboardForbidden'.tr();
+      } else {
+        detail = [
+          if (status != null) 'HTTP $status',
+          apiErrorDetails(e) ?? e.message ?? '',
+        ].where((s) => s.isNotEmpty).join(' · ');
+      }
+    } else {
+      detail = e.toString();
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline,
+                size: 48, color: ThemePalette.onSurfaceMuted(context)),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'dashboardLoadError'.tr(),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                detail,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: ThemePalette.onSurfaceMuted(context),
+                    ),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: Text('retryButton'.tr()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardContent extends StatelessWidget {
+  const _DashboardContent({required this.state});
+
+  final DashboardState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = state.data!;
+    final compliance = state.compliance?.summary;
+    final planVsFact = state.planVsFact;
+    final costPerHead = state.costPerHead;
+    final variance = state.variance;
+
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
         _ManagerKpiGrid(data: data),
+        if (compliance != null) ...[
+          const SizedBox(height: AppSpacing.md),
+          _ComplianceSection(summary: compliance),
+        ],
+        if (planVsFact != null && planVsFact.items.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          _PlanVsFactReportSection(report: planVsFact),
+        ],
+        if (costPerHead != null && costPerHead.items.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          _CostPerHeadSection(report: costPerHead),
+        ],
+        if (variance != null && variance.items.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          _VarianceSection(report: variance),
+        ],
+        // План vs факт текущего дня (отдельный источник — managerDayVariance).
         const _PlanVsFactSection(),
       ],
     );
   }
+}
+
+/// Карточка-секция с заголовком и иконкой (единый стиль блоков дашборда).
+class _DashSection extends StatelessWidget {
+  const _DashSection({required this.title, required this.icon, required this.child});
+
+  final String title;
+  final IconData icon;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: ThemePalette.surfaceCard(context),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: ThemePalette.border(context), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: ThemePalette.onSurfaceMuted(context)),
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+/// Соответствие: халяль / КБЖУ / аллергены. Светофор по числу проблем.
+class _ComplianceSection extends StatelessWidget {
+  const _ComplianceSection({required this.summary});
+
+  final ManagerComplianceSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tile(String label, int count, IconData icon) {
+      final ok = count == 0;
+      final color = ok ? AppColors.profitGreen : AppColors.dangerRed;
+      final theme = Theme.of(context);
+      return Expanded(
+        child: Container(
+          margin: const EdgeInsets.only(right: AppSpacing.xs),
+          padding: const EdgeInsets.all(AppSpacing.sm),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(height: 4),
+              Text(
+                ok ? 'dashOk'.tr() : '$count',
+                style: theme.textTheme.titleMedium
+                    ?.copyWith(color: color, fontWeight: FontWeight.w700),
+              ),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: ThemePalette.onSurfaceMuted(context)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return _DashSection(
+      title: 'dashComplianceTitle'.tr(),
+      icon: Icons.verified_outlined,
+      child: Row(
+        children: [
+          tile('dashHalal'.tr(), summary.halalIssues, Icons.check_circle_outline),
+          tile('dashNutrition'.tr(), summary.nutritionMissing, Icons.egg_alt_outlined),
+          tile('dashAllergens'.tr(), summary.allergenMissing, Icons.warning_amber_outlined),
+        ],
+      ),
+    );
+  }
+}
+
+/// План vs факт по дням: суммарная воронка + строки по датам.
+class _PlanVsFactReportSection extends StatelessWidget {
+  const _PlanVsFactReportSection({required this.report});
+
+  final ManagerPlanVsFactReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = ThemePalette.onSurfaceMuted(context);
+    var planned = 0, produced = 0, served = 0, leftover = 0;
+    for (final i in report.items) {
+      planned += i.plannedPortions;
+      produced += i.producedPortions;
+      served += i.servedPortions;
+      leftover += i.leftoverPortions;
+    }
+
+    Widget stage(String label, int value, Color color) => Expanded(
+          child: _HeroStat(
+            label: label,
+            value: _count(value),
+            color: color,
+          ),
+        );
+
+    return _DashSection(
+      title: 'dashPlanVsFactReportTitle'.tr(),
+      icon: Icons.insights_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              stage('dashPlanned'.tr(), planned, ThemePalette.onSurface(context)),
+              stage('dashProduced'.tr(), produced, ThemePalette.accent(context)),
+              stage('dashServed'.tr(), served, AppColors.profitGreen),
+              stage('dashLeftover'.tr(), leftover,
+                  leftover > 0 ? AppColors.warningAmber : muted),
+            ],
+          ),
+          if (report.items.length > 1) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Divider(height: 1, color: ThemePalette.border(context)),
+            const SizedBox(height: AppSpacing.xs),
+            for (final i in report.items.take(7))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        _shortDate(i.plannedDate),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 4,
+                      child: Text(
+                        '${_count(i.plannedPortions)} → ${_count(i.servedPortions)}',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        i.leftoverPortions > 0
+                            ? '+${_count(i.leftoverPortions)}'
+                            : '—',
+                        textAlign: TextAlign.right,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: i.leftoverPortions > 0
+                              ? AppColors.warningAmber
+                              : muted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Себестоимость на человека по дням (деньги по RBAC).
+class _CostPerHeadSection extends StatelessWidget {
+  const _CostPerHeadSection({required this.report});
+
+  final ManagerCostPerHeadReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = ThemePalette.onSurfaceMuted(context);
+    final showMoney = report.showMoney;
+
+    return _DashSection(
+      title: 'dashCostPerHeadTitle'.tr(),
+      icon: Icons.groups_outlined,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              const Expanded(flex: 3, child: SizedBox()),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  'dashMeals'.tr(),
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  'dashCostHead'.tr(),
+                  textAlign: TextAlign.right,
+                  style: theme.textTheme.labelSmall?.copyWith(color: muted),
+                ),
+              ),
+            ],
+          ),
+          for (final i in report.items.take(7))
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(_shortDate(i.serviceDate),
+                        style: theme.textTheme.bodySmall),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      _count(i.mealsServed),
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      showMoney ? _money(i.costPerHead) : '—',
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Отклонения по категориям (waste/process…).
+class _VarianceSection extends StatelessWidget {
+  const _VarianceSection({required this.report});
+
+  final ManagerVarianceBreakdownReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = ThemePalette.onSurfaceMuted(context);
+    final showMoney = report.showMoney;
+
+    return _DashSection(
+      title: 'dashVarianceTitle'.tr(),
+      icon: Icons.report_problem_outlined,
+      child: Column(
+        children: [
+          for (final i in report.items)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxs),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Text(
+                      i.category ?? '—',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      _qty(i.lossQty),
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.bodySmall?.copyWith(color: muted),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      showMoney ? _money(i.costImpact) : '—',
+                      textAlign: TextAlign.right,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: i.costImpact > 0
+                            ? AppColors.dangerRed
+                            : ThemePalette.onSurface(context),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// «2026-06-07T…» → «07.06». Пусто/неразбираемо → исходная строка.
+String _shortDate(String? raw) {
+  if (raw == null || raw.isEmpty) return '—';
+  final dt = DateTime.tryParse(raw);
+  if (dt == null) return raw;
+  final d = dt.day.toString().padLeft(2, '0');
+  final m = dt.month.toString().padLeft(2, '0');
+  return '$d.$m';
 }
 
 /// Целое/дробное количество с единицей: «12», «12.5 кг».

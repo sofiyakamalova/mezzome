@@ -1,8 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/network/api_client.dart';
 import 'package:mezzome/features/dashboard/data/api/dashboard_api.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
 
 class DashboardRepository {
   DashboardRepository(this._api);
@@ -22,6 +24,33 @@ class DashboardRepository {
     );
     return data;
   }
+
+  /// Вспомогательные репорты дашборда. Каждый грузится best-effort: при ошибке
+  /// (403 / нет данных) возвращаем `null`, чтобы дашборд не падал целиком, а
+  /// просто скрывал недоступную секцию.
+  Future<T?> _tryFetch<T>(Future<T> Function() fetch, String label) async {
+    try {
+      return await fetch();
+    } on DioException catch (e) {
+      appLogger.w('Dashboard report "$label" failed: ${e.message}');
+      return null;
+    } catch (e) {
+      appLogger.w('Dashboard report "$label" failed: $e');
+      return null;
+    }
+  }
+
+  Future<ManagerPlanVsFactReport?> fetchPlanVsFact() =>
+      _tryFetch(_api.getPlanVsFact, 'plan-vs-fact');
+
+  Future<ManagerCostPerHeadReport?> fetchCostPerHead() =>
+      _tryFetch(_api.getCostPerHead, 'cost-per-head');
+
+  Future<ManagerVarianceBreakdownReport?> fetchVarianceBreakdown() =>
+      _tryFetch(_api.getVarianceBreakdown, 'variance-breakdown');
+
+  Future<ManagerComplianceDigest?> fetchComplianceDigest() =>
+      _tryFetch(_api.getComplianceDigest, 'compliance-digest');
 }
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {

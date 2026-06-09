@@ -312,5 +312,20 @@
   "tcpKcal": "Ккал",
   "tcpProtein": "Белки",
   "tcpFat": "Жиры",
-  "tcpCarbs": "Углеводы"
+  "tcpCarbs": "Углеводы",
+  "dashboardForbidden": "Нет доступа к дашборду (403). Он доступен роли «менеджер/директор» — проверьте, под какой ролью выполнен вход.",
+  "dashOk": "ОК",
+  "dashComplianceTitle": "Соответствие",
+  "dashHalal": "Халяль",
+  "dashNutrition": "КБЖУ",
+  "dashAllergens": "Аллергены",
+  "dashPlanVsFactReportTitle": "План vs факт (по дням)",
+  "dashPlanned": "План",
+  "dashProduced": "Произведено",
+  "dashServed": "Подано",
+  "dashLeftover": "Остаток",
+  "dashCostPerHeadTitle": "Себестоимость на человека",
+  "dashMeals": "Порций",
+  "dashCostHead": "₸/чел",
+  "dashVarianceTitle": "Отклонения по категориям"
 }

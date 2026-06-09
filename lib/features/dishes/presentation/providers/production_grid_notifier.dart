@@ -19,7 +19,10 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
   @override
   ProductionGridState build() {
     return ProductionGridState(
-      weekStart: DateFormatUtil.startOfWeek(DateFormatUtil.today),
+      //weekStart: DateFormatUtil.startOfWeek(DateFormatUtil.today)
+      // ВРЕМЕННО: стартуем на неделе 1–7 июня 2026, где сейчас есть данные.
+      // TODO: вернуть `DateFormatUtil.startOfWeek(DateFormatUtil.today)`.
+      weekStart: DateFormatUtil.startOfWeek(DateTime(2026, 6, 3)),
     );
   }
 
@@ -29,9 +32,7 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
     MenuServiceType? service,
     bool refresh = false,
   }) async {
-    final weekStart = DateFormatUtil.startOfWeek(
-      anchorDate ?? state.weekStart,
-    );
+    final weekStart = DateFormatUtil.startOfWeek(anchorDate ?? state.weekStart);
     final svc = service ?? state.service;
 
     final sameWeek = DateFormatUtil.isSameDay(weekStart, state.weekStart);
@@ -67,35 +68,29 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
     );
 
     final weekStartStr = DateFormatUtil.apiDate(weekStart);
-    appLogger.i(
-      'Menu grid: week_start=$weekStartStr, service=${svc.apiValue}',
-    );
+    appLogger.i('Menu grid: week_start=$weekStartStr, service=${svc.apiValue}');
 
     try {
       final api = ref.read(productionPlansApiProvider);
       // Две роли: manager смотрит сетку через свой роут, chef — через chef-роут.
       final grid = await switch (role!) {
         UserRole.manager => api.getManagerGrid(
-            weekStart: weekStartStr,
-            serviceType: svc.apiValue,
-            kitchenId: state.kitchenId,
-          ),
+          weekStart: weekStartStr,
+          serviceType: svc.apiValue,
+          kitchenId: state.kitchenId,
+        ),
         _ => api.getChefGrid(
-            weekStart: weekStartStr,
-            serviceType: svc.apiValue,
-            kitchenId: state.kitchenId,
-          ),
+          weekStart: weekStartStr,
+          serviceType: svc.apiValue,
+          kitchenId: state.kitchenId,
+        ),
       };
 
       appLogger.i(
         'Menu grid loaded: ${grid.rows.length} rows, ${grid.days.length} days',
       );
 
-      state = state.copyWith(
-        isLoading: false,
-        isRefreshing: false,
-        grid: grid,
-      );
+      state = state.copyWith(isLoading: false, isRefreshing: false, grid: grid);
     } catch (error, stack) {
       final forbidden =
           error is DioException && error.response?.statusCode == 403;
@@ -103,8 +98,9 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
       state = state.copyWith(
         isLoading: false,
         isRefreshing: false,
-        errorMessage:
-            forbidden ? 'menuGridForbidden'.tr() : 'menuGridLoadError'.tr(),
+        errorMessage: forbidden
+            ? 'menuGridForbidden'.tr()
+            : 'menuGridLoadError'.tr(),
       );
     }
   }
@@ -130,12 +126,9 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
 
 /// Роли, у которых есть собственный grid-роут `/{role}/production-plans/grid`.
 /// В двухролевой модели — chef и manager.
-const _gridRoles = {
-  UserRole.chef,
-  UserRole.manager,
-};
+const _gridRoles = {UserRole.chef, UserRole.manager};
 
 final productionGridNotifierProvider =
     NotifierProvider<ProductionGridNotifier, ProductionGridState>(
-  ProductionGridNotifier.new,
-);
+      ProductionGridNotifier.new,
+    );
