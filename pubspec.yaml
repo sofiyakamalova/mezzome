@@ -41,6 +41,7 @@ dependencies:
   fl_chart: ^0.70.2
   file_picker: ^8.1.7
   path_provider: ^2.1.5
+  another_flushbar: ^2.2.4
 
 dev_dependencies:
   flutter_test:

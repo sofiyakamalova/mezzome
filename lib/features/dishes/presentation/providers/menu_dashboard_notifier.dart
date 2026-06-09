@@ -350,6 +350,24 @@ class MenuDashboardNotifier extends Notifier<MenuDashboardState> {
     final original = state.editorOriginal ?? draft.copyForSnapshot();
     final changes = draft.diffFrom(original);
     final repo = ref.read(menuDashboardRepositoryProvider);
+    final isChef = session?.role == UserRole.chef;
+
+    // P1.4 — баланс массы: не сохраняем при расхождении выше допуска.
+    if (!draft.readOnly && !draft.massConverges()) {
+      final pct = draft.massDivergencePct ?? 0;
+      appLogger.w('saveAndSign: blocked — mass divergence ${pct.toStringAsFixed(1)}%');
+      return SaveResult(
+        error: 'tcpMassBlock'.tr(
+          namedArgs: {'pct': pct.toStringAsFixed(1)},
+        ),
+      );
+    }
+
+    // P1.5 — правка менеджера уходит шефу только с указанной причиной.
+    if (!isChef && changes.isNotEmpty && draft.editReason.trim().isEmpty) {
+      appLogger.w('saveAndSign: blocked — edit reason required');
+      return SaveResult(error: 'tcpReasonRequired'.tr());
+    }
 
     appLogger.i(
       'saveAndSign: cell=$cellKey, cardId=${draft.id}, '
@@ -376,7 +394,6 @@ class MenuDashboardNotifier extends Notifier<MenuDashboardState> {
         // (submit_for_approval=false), затем сразу одобряем черновую версию
         // (POST .../approve). Бэкенд фиксирует изменение в истории техкарты.
         // Прочие роли (manager) — старый путь через очередь согласования.
-        final isChef = session?.role == UserRole.chef;
         appLogger.i('saveAndSign: PATCH technical-card ${draft.id}…');
         final saved = await repo.saveTechnicalCard(
           id: draft.id!,

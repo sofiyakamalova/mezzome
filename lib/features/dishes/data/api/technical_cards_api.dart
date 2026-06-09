@@ -64,6 +64,11 @@ abstract class TechnicalCardsApi {
   @GET('/manager/technical-cards/{id}/history')
   Future<dynamic> getManagerTechnicalCardHistory(@Path('id') int id);
 
+  /// Факт по весам vs план (P2.10). Ответ не типизирован в swagger —
+  /// возвращаем сырой объект, парсим лояльно (см. parseScaleVariance).
+  @GET('/variance/technical-cards/{id}/breakdown')
+  Future<dynamic> getTechnicalCardVarianceBreakdown(@Path('id') int id);
+
   @GET('/owner/audit')
   Future<AuditLogListResponse> getOwnerAudit({
     @Query('date') String? date,

@@ -48,6 +48,14 @@ class TechCardEditorPanel extends StatefulWidget {
 
 class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
   bool _saving = false;
+  late final TextEditingController _reasonController =
+      TextEditingController(text: widget.draft.editReason);
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
 
   /// Шапка для недельной сетки: «приём пищи · день» + категория.
   List<Widget> _scheduleHeader(BuildContext context, TechCardDraft draft) {
@@ -97,7 +105,7 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: AppColors.warningAmber.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
               ),
               child: Text(
                 [
@@ -142,6 +150,14 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
   @override
   Widget build(BuildContext context) {
     final draft = widget.draft;
+    final original = draft.originalSnapshot;
+    final changes = original == null
+        ? const <({String field, String oldValue, String newValue})>[]
+        : draft.diffFrom(original);
+    final massOk = draft.massConverges();
+    final reasonRequired = !widget.selfApprove && changes.isNotEmpty;
+    final reasonMissing = reasonRequired && draft.editReason.trim().isEmpty;
+    final saveBlocked = !draft.readOnly && (!massOk || reasonMissing);
 
     return Material(
       color: ThemePalette.surfacePanel(context),
@@ -247,6 +263,7 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
                               label: 'yieldGramsLabel'.tr(),
                               value: draft.outputGrams,
                               suffix: 'г',
+                              step: 10,
                               readOnly: draft.readOnly,
                               onChanged: (v) {
                                 draft.outputGrams = v;
@@ -360,6 +377,31 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
                     },
                   ),
                 ),
+                // P1.4 — сходимость массы (выход vs Σ нетто за вычетом ужарки).
+                if (!draft.readOnly && draft.massDivergencePct != null)
+                  _MassConvergence(draft: draft),
+                // P1.5 — diff «было → стало» для шефа.
+                if (changes.isNotEmpty) _DiffBlock(changes: changes),
+                // P1.5 — обязательная причина правки (manager → chef).
+                if (!draft.readOnly && !widget.selfApprove)
+                  _FormSection(
+                    title: 'tcpReason'.tr(),
+                    child: TextField(
+                      controller: _reasonController,
+                      minLines: 2,
+                      maxLines: 4,
+                      decoration: InputDecoration(
+                        isDense: true,
+                        hintText: 'tcpReasonHint'.tr(),
+                        errorText:
+                            reasonMissing ? 'tcpReasonRequired'.tr() : null,
+                      ),
+                      onChanged: (v) {
+                        draft.editReason = v;
+                        widget.onChanged(draft);
+                      },
+                    ),
+                  ),
               ],
             ),
           ),
@@ -392,6 +434,23 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
                           color: ThemePalette.onSurfaceMuted(context),
                         ),
                   ),
+                  if (saveBlocked)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xxs),
+                      child: Text(
+                        !massOk
+                            ? 'tcpMassBlock'.tr(namedArgs: {
+                                'pct':
+                                    (draft.massDivergencePct ?? 0)
+                                        .toStringAsFixed(1),
+                              })
+                            : 'tcpReasonRequired'.tr(),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.dangerRed,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
                   const SizedBox(height: AppSpacing.sm),
                   Row(
                     children: [
@@ -401,7 +460,7 @@ class _TechCardEditorPanelState extends State<TechCardEditorPanel> {
                       ),
                       const Spacer(),
                       FilledButton.icon(
-                        onPressed: _saving
+                        onPressed: (_saving || saveBlocked)
                             ? null
                             : () async {
                                 setState(() => _saving = true);
@@ -491,7 +550,10 @@ class _FormSection extends StatelessWidget {
 /// пересоздания контроллера в build) — поэтому курсор не сбрасывается при
 /// вводе. `Key` завязан на идентичность объекта-источника: меняется только
 /// при откате (новый объект) → поле перечитывает значение.
-class _NumberField extends StatelessWidget {
+/// Числовое поле со степперами «−/+» (P2.8). Контроллер синхронизируется с
+/// внешним значением в [didUpdateWidget] — поэтому степпер/откат меняют текст,
+/// а набор не сбрасывает курсор.
+class _NumberField extends StatefulWidget {
   const _NumberField({
     required this.label,
     required this.value,
@@ -500,6 +562,7 @@ class _NumberField extends StatelessWidget {
     this.isInt = false,
     this.suffix,
     this.readOnly = false,
+    this.step,
   });
 
   final String label;
@@ -510,40 +573,112 @@ class _NumberField extends StatelessWidget {
   final String? suffix;
   final bool readOnly;
 
-  /// Текст для поля. Ноль показываем как пустую строку (через [hintText]),
-  /// чтобы не приходилось стирать «0» перед вводом. Дробные граммовки
-  /// сохраняем без округления: 12.32 → «12.32», 10.0 → «10».
-  String _initialText() {
+  /// Шаг степпера (по умолчанию 1).
+  final double? step;
+
+  @override
+  State<_NumberField> createState() => _NumberFieldState();
+}
+
+class _NumberFieldState extends State<_NumberField> {
+  late final TextEditingController _controller =
+      TextEditingController(text: _format(widget.value));
+
+  double get _step => widget.step ?? 1;
+
+  double get _current =>
+      double.tryParse(_controller.text.replaceAll(',', '.')) ?? 0;
+
+  /// Ноль → пустая строка (hint «0»). Дробные без хвостовых нулей: 10.0 → «10».
+  String _format(double value) {
     if (value == 0) return '';
-    if (isInt) return value.round().toString();
-    final fixed = value.toStringAsFixed(2);
-    return fixed
+    if (widget.isInt) return value.round().toString();
+    return value
+        .toStringAsFixed(2)
         .replaceAll(RegExp(r'0+$'), '')
         .replaceAll(RegExp(r'\.$'), '');
   }
 
   @override
+  void didUpdateWidget(covariant _NumberField old) {
+    super.didUpdateWidget(old);
+    // Значение изменили снаружи (степпер/откат) — синхронизируем текст; набор
+    // того же значения не трогаем (иначе прыгнет курсор).
+    if ((_current - widget.value).abs() > 1e-9) {
+      final text = _format(widget.value);
+      _controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _bump(double delta) {
+    var v = _current + delta;
+    if (v < 0) v = 0;
+    widget.onChanged(widget.isInt ? v.roundToDouble() : v);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final steppers = !widget.readOnly;
+    final label = widget.suffix == null
+        ? widget.label
+        : '${widget.label}, ${widget.suffix}';
     return TextFormField(
-      key: ValueKey(fieldKey),
-      readOnly: readOnly,
-      initialValue: _initialText(),
+      key: ValueKey(widget.fieldKey),
+      controller: _controller,
+      readOnly: widget.readOnly,
+      textAlign: steppers ? TextAlign.center : TextAlign.start,
       decoration: InputDecoration(
         labelText: label,
         isDense: true,
         hintText: '0',
-        suffixText: suffix,
+        contentPadding: const EdgeInsets.symmetric(vertical: 8),
+        prefixIcon: steppers
+            ? _StepBtn(icon: Icons.remove, onTap: () => _bump(-_step))
+            : null,
+        suffixIcon: steppers
+            ? _StepBtn(icon: Icons.add, onTap: () => _bump(_step))
+            : null,
+        suffixText: steppers ? null : widget.suffix,
       ),
-      keyboardType: TextInputType.numberWithOptions(decimal: !isInt),
+      keyboardType: TextInputType.numberWithOptions(decimal: !widget.isInt),
       inputFormatters: [
         FilteringTextInputFormatter.allow(
-          isInt ? RegExp(r'\d') : RegExp(r'[\d.,]'),
+          widget.isInt ? RegExp(r'\d') : RegExp(r'[\d.,]'),
         ),
       ],
       onChanged: (raw) {
         final parsed = double.tryParse(raw.replaceAll(',', '.')) ?? 0;
-        onChanged(parsed);
+        widget.onChanged(parsed);
       },
+    );
+  }
+}
+
+/// Компактная кнопка степпера для [_NumberField].
+class _StepBtn extends StatelessWidget {
+  const _StepBtn({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 16),
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+      color: ThemePalette.onSurfaceMuted(context),
     );
   }
 }
@@ -694,6 +829,7 @@ class _IngredientCard extends StatelessWidget {
               Expanded(
                 child: _NumberField(
                   fieldKey: 'brutto_$idTag',
+                  step: 5,
                   label: 'colBrutto'.tr(),
                   value: ing.brutto,
                   suffix: 'г',
@@ -708,6 +844,7 @@ class _IngredientCard extends StatelessWidget {
               Expanded(
                 child: _NumberField(
                   fieldKey: 'netto_$idTag',
+                  step: 5,
                   label: 'colNetto'.tr(),
                   value: ing.netto,
                   suffix: 'г',
@@ -775,6 +912,178 @@ class _ReadOnlyBanner extends StatelessWidget {
                   ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// P1.4 — панель сходимости массы: выход vs Σ нетто за вычетом ужарки.
+class _MassConvergence extends StatelessWidget {
+  const _MassConvergence({required this.draft});
+
+  final TechCardDraft draft;
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = draft.massDivergencePct ?? 0;
+    final ok = draft.massConverges();
+    final color = ok ? AppColors.profitGreen : AppColors.dangerRed;
+    final muted = ThemePalette.onSurfaceMuted(context);
+
+    Widget metric(String label, String value) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: muted)),
+            Text(value,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+          ],
+        );
+
+    return _FormSection(
+      title: 'tcpMassConvergence'.tr(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Wrap(
+            spacing: AppSpacing.md,
+            runSpacing: AppSpacing.xs,
+            children: [
+              metric('tcpMassNetto'.tr(), '${draft.nettoSum.toStringAsFixed(0)} г'),
+              metric('tcpExpectedOutput'.tr(),
+                  '${draft.expectedOutput.toStringAsFixed(0)} г'),
+              metric('tcpMassYield'.tr(),
+                  '${draft.outputGrams.toStringAsFixed(0)} г'),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Row(
+            children: [
+              Text('${'tcpMassDiff'.tr()}: ',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: muted)),
+              Text('${pct >= 0 ? '+' : ''}${pct.toStringAsFixed(1)}%',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: color, fontWeight: FontWeight.w700)),
+              const Spacer(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                ),
+                child: Text(
+                  (ok ? 'tcpInNorm' : 'tcpOutOfNorm').tr(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// P1.5 — diff «было → стало» текущей правки для шефа.
+class _DiffBlock extends StatelessWidget {
+  const _DiffBlock({required this.changes});
+
+  final List<({String field, String oldValue, String newValue})> changes;
+
+  static String _label(String field) {
+    switch (field) {
+      case 'name':
+        return 'dishNameLabel'.tr();
+      case 'outputGrams':
+        return 'yieldGramsLabel'.tr();
+      case 'portions':
+        return 'basePortionsLabel'.tr();
+      case 'plannedPortions':
+        return 'plannedPortionsLabel'.tr();
+      case 'lossPct':
+        return 'lossPctLabel'.tr();
+      case 'notes':
+        return 'techNotesLabel'.tr();
+      case 'ingredients':
+        return 'ingredientsTitle'.tr();
+      case 'portionCost':
+        return 'tcpKpiCost'.tr();
+    }
+    return field;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _FormSection(
+      title: 'tcpDiffTitle'.tr(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final c in changes)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: Text(
+                      _label(c.field),
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  Expanded(
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: c.oldValue.isEmpty ? '—' : c.oldValue,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: AppColors.dangerRed,
+                                  decoration: TextDecoration.lineThrough,
+                                ),
+                          ),
+                          const TextSpan(text: '  →  '),
+                          TextSpan(
+                            text: c.newValue.isEmpty ? '—' : c.newValue,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodySmall
+                                ?.copyWith(
+                                  color: AppColors.profitGreen,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

@@ -21,6 +21,8 @@ class DishModel {
     this.isActive = true,
     this.imageUrl,
     this.categoryId,
+    this.allergens = const [],
+    this.nutritionInfo,
   });
 
   final int id;
@@ -42,6 +44,13 @@ class DishModel {
 
   @JsonKey(name: 'category_id')
   final int? categoryId;
+
+  /// Аллергены блюда (`allergens`) — для колонки в техкарте.
+  final List<String> allergens;
+
+  /// Пищевая ценность (`nutrition_info`) — свободный JSON (КБЖУ). Структуру
+  /// бэкенд не фиксирует, парсим мягко на клиенте.
+  final Map<String, dynamic>? nutritionInfo;
 
   double? get foodCostPct {
     if (price == null || price! <= 0 || costPerPortion == null) {

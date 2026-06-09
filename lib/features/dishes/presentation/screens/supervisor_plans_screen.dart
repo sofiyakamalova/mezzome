@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
@@ -162,18 +163,16 @@ class _SupervisorPlansScreenState
 
   void _afterDecision(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    AppFlushbar.showSuccess(context, message);
     _load();
   }
 
   void _decisionError(DioException e) {
     appLogger.w('Plan decision failed: ${e.response?.data}');
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(apiErrorDetails(e) ?? 'planDecisionError'.tr()),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
+    AppFlushbar.showError(
+      context,
+      apiErrorDetails(e) ?? 'planDecisionError'.tr(),
     );
   }
 

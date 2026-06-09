@@ -359,7 +359,7 @@ class _RequestCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
                   color: badge.color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
                 ),
                 child: Text(
                   badge.label,

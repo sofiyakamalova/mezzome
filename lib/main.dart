@@ -18,6 +18,7 @@ Future<void> main() async {
       startLocale: AppLocales.fallback,
       saveLocale: true,
       useOnlyLangCode: true,
+      useFallbackTranslations: true,
       child: const ProviderScope(
         child: MezzomeApp(),
       ),

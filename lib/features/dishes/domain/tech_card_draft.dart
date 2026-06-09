@@ -51,6 +51,33 @@ class TechCardDraft {
   String notes;
   List<TechCardIngredientDraft> ingredients;
 
+  /// Причина правки (manager → chef). Уходит в `approval_reason` при отправке.
+  /// Транзиентна: не входит в snapshot/diff/копию.
+  String editReason = '';
+
+  /// Σ нетто на порцию (для панели сходимости массы).
+  double get nettoSum =>
+      ingredients.fold<double>(0, (s, i) => s + i.netto);
+
+  /// Ожидаемый выход после ужарки: Σ нетто × (1 − lossPct%).
+  double get expectedOutput => nettoSum * (1 - lossPct / 100);
+
+  /// Расхождение массы в %: насколько заявленный выход отличается от
+  /// ожидаемого (Σ нетто за вычетом ужарки). Так сырой вес и готовый выход
+  /// сверяются корректно — ужарка не считается ошибкой. `null`, если нет данных.
+  double? get massDivergencePct {
+    if (outputGrams <= 0) return null;
+    final expected = expectedOutput;
+    if (expected <= 0) return null;
+    return (outputGrams - expected) / expected * 100;
+  }
+
+  /// Сходится ли масса в пределах допуска ε (по умолчанию 5%).
+  bool massConverges({double tolerancePct = 5}) {
+    final pct = massDivergencePct;
+    return pct == null || pct.abs() <= tolerancePct;
+  }
+
   /// Карточка открыта вне недельной сетки (раздел «Мои запросы»): у неё нет
   /// привязки к приёму пищи/дню, поэтому в шапке показываем версию и даты
   /// изменения вместо `service · day`.

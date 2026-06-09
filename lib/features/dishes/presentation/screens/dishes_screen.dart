@@ -5,11 +5,13 @@ import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
 import 'package:mezzome/features/dishes/presentation/providers/menu_dashboard_notifier.dart';
 import 'package:mezzome/features/dishes/presentation/providers/production_grid_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/screens/tech_card_page.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/menu_dashboard_app_bar_title.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/production_grid_table.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/service_tabs.dart';
@@ -33,6 +35,29 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(productionGridNotifierProvider.notifier).load();
     });
+  }
+
+  /// Тап по блюду в сетке → полноэкранная страница техкарты. Редактирование
+  /// по-прежнему через bottom-sheet (кнопка «Редактировать» на странице).
+  Future<void> _openTechCardPage({
+    required ProductionPlanGridCellItem item,
+    required DateTime? date,
+    required String signature,
+    required bool showFinancials,
+  }) {
+    return TechCardPage.open(
+      context,
+      item: item,
+      date: date,
+      signature: signature,
+      showFinancials: showFinancials,
+      onEdit: () => _openGridDishSheet(
+        item: item,
+        date: date,
+        signature: signature,
+        showFinancials: showFinancials,
+      ),
+    );
   }
 
   /// Тап по блюду в сетке → MenuGridCell → bottom-sheet техкарты (§6.2).
@@ -86,9 +111,7 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
 
     final notice = dashboard.techCardLoadNotice;
     if (notice != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(notice)),
-      );
+      AppFlushbar.showInfo(context, notice);
       notifier.clearTechCardLoadNotice();
     }
 
@@ -164,7 +187,7 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
                 days: grid.days,
                 serviceTitle: grid.grid?.serviceTypeTitle,
                 showFinancials: showFinancials,
-                onItemTap: (item, date) => _openGridDishSheet(
+                onItemTap: (item, date) => _openTechCardPage(
                   item: item,
                   date: date,
                   signature: signature,

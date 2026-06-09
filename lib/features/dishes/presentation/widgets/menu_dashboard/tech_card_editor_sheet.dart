@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_draft.dart';
@@ -97,13 +98,10 @@ class TechCardEditorSheet extends StatelessWidget {
                               if (!sheetContext.mounted) return;
                               final message = result.error ?? result.notice;
                               if (message == null) return;
-                              ScaffoldMessenger.of(sheetContext).showSnackBar(
-                                SnackBar(
-                                  content: Text(message),
-                                  backgroundColor: result.error != null
-                                      ? Theme.of(sheetContext).colorScheme.error
-                                      : null,
-                                ),
+                              AppFlushbar.show(
+                                sheetContext,
+                                message,
+                                isError: result.error != null,
                               );
                             },
                   onSaveAndSign: () async {
@@ -114,21 +112,12 @@ class TechCardEditorSheet extends StatelessWidget {
                     // Блокирующая ошибка (PLAN_NOT_EDITABLE) — оставляем лист
                     // открытым, чтобы пользователь увидел сообщение.
                     if (result.error != null) {
-                      ScaffoldMessenger.of(sheetContext).showSnackBar(
-                        SnackBar(
-                          content: Text(result.error!),
-                          backgroundColor:
-                              Theme.of(sheetContext).colorScheme.error,
-                        ),
-                      );
+                      AppFlushbar.showError(sheetContext, result.error!);
                       return;
                     }
-                    ScaffoldMessenger.of(sheetContext).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          result.notice ?? 'techCardSavedToast'.tr(),
-                        ),
-                      ),
+                    AppFlushbar.showSuccess(
+                      sheetContext,
+                      result.notice ?? 'techCardSavedToast'.tr(),
                     );
                     Navigator.of(sheetContext).pop();
                   },

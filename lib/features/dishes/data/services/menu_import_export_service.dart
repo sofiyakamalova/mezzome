@@ -6,6 +6,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:path_provider/path_provider.dart';
 
 enum MenuExportFormat { excel, word }
@@ -33,16 +34,13 @@ class MenuImportExportService {
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'importPendingBackend'.tr(
-            namedArgs: {
-              'file': result.files.single.name,
-              'format': isWord ? 'Word' : 'Excel',
-            },
-          ),
-        ),
+    AppFlushbar.showInfo(
+      context,
+      'importPendingBackend'.tr(
+        namedArgs: {
+          'file': result.files.single.name,
+          'format': isWord ? 'Word' : 'Excel',
+        },
       ),
     );
   }
@@ -78,12 +76,9 @@ class MenuImportExportService {
       if (!context.mounted) {
         return;
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'exportSaved'.tr(namedArgs: {'path': file.path}),
-          ),
-        ),
+      AppFlushbar.showSuccess(
+        context,
+        'exportSaved'.tr(namedArgs: {'path': file.path}),
       );
     } catch (error) {
       appLogger.w('Export via API failed, generating local stub: $error');
@@ -108,10 +103,9 @@ class MenuImportExportService {
     if (!context.mounted) {
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('exportLocalFallback'.tr(namedArgs: {'path': file.path})),
-      ),
+    AppFlushbar.showInfo(
+      context,
+      'exportLocalFallback'.tr(namedArgs: {'path': file.path}),
     );
   }
 }

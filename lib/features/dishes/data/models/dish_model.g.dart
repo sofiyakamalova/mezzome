@@ -16,6 +16,10 @@ DishModel _$DishModelFromJson(Map<String, dynamic> json) => DishModel(
   isActive: json['is_active'] as bool? ?? true,
   imageUrl: json['image_url'] as String?,
   categoryId: (json['category_id'] as num?)?.toInt(),
+  allergens:
+      (json['allergens'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+  nutritionInfo: json['nutrition_info'] as Map<String, dynamic>?,
 );
 
 Map<String, dynamic> _$DishModelToJson(DishModel instance) => <String, dynamic>{
@@ -28,6 +32,8 @@ Map<String, dynamic> _$DishModelToJson(DishModel instance) => <String, dynamic>{
   'is_active': instance.isActive,
   'image_url': instance.imageUrl,
   'category_id': instance.categoryId,
+  'allergens': instance.allergens,
+  'nutrition_info': instance.nutritionInfo,
 };
 
 DishListResponse _$DishListResponseFromJson(Map<String, dynamic> json) =>

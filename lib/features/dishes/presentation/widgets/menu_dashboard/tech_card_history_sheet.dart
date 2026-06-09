@@ -186,7 +186,7 @@ class _HistoryTile extends StatelessWidget {
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppColors.warningAmber.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
                 ),
                 child: Text(
                   [

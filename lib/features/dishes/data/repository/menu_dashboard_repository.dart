@@ -8,11 +8,13 @@ import 'package:mezzome/features/dishes/data/api/ingredients_api.dart';
 import 'package:mezzome/features/dishes/data/api/production_plans_api.dart';
 import 'package:mezzome/features/dishes/data/api/technical_cards_api.dart';
 import 'package:mezzome/features/dishes/data/models/ingredient_catalog_model.dart';
+import 'package:mezzome/features/dishes/data/models/dish_model.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_model.dart';
 import 'package:mezzome/features/dishes/data/models/technical_card_model.dart';
 import 'package:mezzome/features/dishes/data/repository/dishes_repository.dart';
 import 'package:mezzome/features/dishes/domain/menu_service_type.dart';
 import 'package:mezzome/features/dishes/domain/plan_not_editable.dart';
+import 'package:mezzome/features/dishes/domain/scale_variance.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_draft.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_history.dart';
 
@@ -230,6 +232,41 @@ class MenuDashboardRepository {
     }
   }
 
+  /// Блюдо меню по id — для цены продажи и аллергенов (отдельного detail-роута
+  /// нет, ищем в каталоге `/menu/items`). `null`, если блюдо не найдено.
+  Future<DishModel?> loadMenuItem(int menuItemId) async {
+    try {
+      final dishes = await _dishesRepository.fetchCatalogDishes();
+      for (final dish in dishes) {
+        if (dish.id == menuItemId) {
+          return dish;
+        }
+      }
+      appLogger.i('Menu item $menuItemId not found in catalog');
+    } on DioException catch (error) {
+      appLogger.w('Menu item $menuItemId load failed: ${error.message}');
+    }
+    return null;
+  }
+
+  /// Факт по весам vs план (P2.10). Эндпоинт под `/variance` — общий, без
+  /// chef/manager-разделения. Пустой результат, если данных нет/ошибка.
+  Future<ScaleVarianceResult> loadScaleVariance(int technicalCardId) async {
+    try {
+      final raw = await _technicalCardsApi.getTechnicalCardVarianceBreakdown(
+        technicalCardId,
+      );
+      final result = parseScaleVariance(raw);
+      appLogger.i(
+        'Scale variance for tk $technicalCardId: ${result.lines.length} lines',
+      );
+      return result;
+    } on DioException catch (error) {
+      appLogger.w('Scale variance $technicalCardId failed: ${error.message}');
+      return const ScaleVarianceResult();
+    }
+  }
+
   Future<TechnicalCardModel?> getTechnicalCard(int id) async {
     try {
       return await (_dishesRepository.usesManagerApi
@@ -268,6 +305,8 @@ class MenuDashboardRepository {
           menuItemId: draft.menuItemId,
           halalRequired: draft.halalRequired,
           submitForApproval: submitForApproval,
+          approvalReason:
+              draft.editReason.trim().isEmpty ? null : draft.editReason.trim(),
           // Бэкенд ждёт ingredient_id + граммовки; цену (cost_per_unit)
           // не отправляем — себестоимость считается из справочника.
           ingredients: draft.ingredients

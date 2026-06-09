@@ -18,6 +18,6 @@ abstract final class AppSpacing {
   /// CTA-кнопки.
   static const double radiusButton = 12;
 
-  /// Бейджи / пилюли (статусы, роли) — полностью скруглённые.
-  static const double radiusPill = 20;
+  /// Бейджи / пилюли (статусы, роли) — скруглённые, максимум 16 (без «таблеток»).
+  static const double radiusPill = 16;
 }

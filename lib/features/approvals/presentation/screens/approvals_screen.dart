@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/network/dio_provider.dart';
@@ -172,19 +173,15 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
       );
       appLogger.i('POST /manager/tk-approvals/$id/$action → ${res.statusCode}');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(approve ? 'Утверждено' : 'Отклонено')),
-      );
+      AppFlushbar.showSuccess(context, approve ? 'Утверждено' : 'Отклонено');
       await _load();
     } on DioException catch (e) {
       appLogger.w('Decision $action failed: ${e.response?.data}');
       if (!mounted) return;
       final details = apiErrorDetails(e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(details ?? 'Ошибка: ${e.response?.statusCode}'),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      AppFlushbar.showError(
+        context,
+        details ?? 'Ошибка: ${e.response?.statusCode}',
       );
     }
   }

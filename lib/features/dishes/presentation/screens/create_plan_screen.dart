@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
@@ -138,9 +139,7 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
     }
 
     if (inputs.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('createPlanNoItems'.tr())),
-      );
+      AppFlushbar.showError(context, 'createPlanNoItems'.tr());
       return;
     }
 
@@ -173,11 +172,9 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
       appLogger.w('Create plan failed: ${e.response?.data}');
       if (!mounted) return;
       setState(() => _submitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(apiErrorDetails(e) ?? 'createPlanError'.tr()),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      AppFlushbar.showError(
+        context,
+        apiErrorDetails(e) ?? 'createPlanError'.tr(),
       );
     }
   }
@@ -213,15 +210,13 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
       final msg = res.canFulfill
           ? 'checkStockOk'.tr()
           : 'checkStockShort'.tr(namedArgs: {'count': '${res.shortages}'});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      AppFlushbar.show(context, msg, isError: !res.canFulfill);
     } on DioException catch (e) {
       appLogger.w('Check stock failed: ${e.response?.data}');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(apiErrorDetails(e) ?? 'checkStockError'.tr()),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
+      AppFlushbar.showError(
+        context,
+        apiErrorDetails(e) ?? 'checkStockError'.tr(),
       );
     }
   }

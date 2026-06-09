@@ -44,6 +44,12 @@ class TechnicalCardModel {
     this.updatedAt,
     this.halalRequired = false,
     this.ingredients = const [],
+    this.code,
+    this.createdAt,
+    this.createdBy,
+    this.isLatest = false,
+    this.approvalReason,
+    this.steps = const [],
   });
 
   final int id;
@@ -89,6 +95,25 @@ class TechnicalCardModel {
 
   final List<TechnicalCardIngredientModel> ingredients;
 
+  /// Артикул/код техкарты (`code`).
+  final String? code;
+
+  /// Когда создана (`created_at`).
+  final DateTime? createdAt;
+
+  /// Id автора (`created_by`) — имя/роль бэкенд пока не разворачивает.
+  final int? createdBy;
+
+  /// Действующая (последняя) версия (`is_latest`) — бейдж «Активна».
+  @JsonKey(name: 'is_latest')
+  final bool isLatest;
+
+  /// Причина правки/решения (`approval_reason`).
+  final String? approvalReason;
+
+  /// Шаги приготовления (`steps`).
+  final List<TechnicalCardStepModel> steps;
+
   /// Действия, означающие, что версию можно редактировать/переотправить.
   static const _editActions = {
     'edit',
@@ -132,6 +157,9 @@ class TechnicalCardIngredientModel {
     this.costPerUnit = 0,
     this.totalCost = 0,
     this.unit,
+    this.cleaningPct,
+    this.cutType,
+    this.nettoPerPortion,
   });
 
   final int id;
@@ -143,10 +171,46 @@ class TechnicalCardIngredientModel {
   final double totalCost;
   final String? unit;
 
+  /// Коэффициент очистки (`cleaning_pct`) — доля выхода после обработки.
+  final double? cleaningPct;
+
+  /// Тип нарезки/обработки (`cut_type`).
+  final String? cutType;
+
+  /// Нетто на порцию (`netto_per_portion`).
+  final double? nettoPerPortion;
+
   factory TechnicalCardIngredientModel.fromJson(Map<String, dynamic> json) =>
       _$TechnicalCardIngredientModelFromJson(json);
 
   Map<String, dynamic> toJson() => _$TechnicalCardIngredientModelToJson(this);
+}
+
+/// Шаг приготовления техкарты (`dto.TechnicalCardStepResponse`).
+@JsonSerializable(fieldRename: FieldRename.snake)
+class TechnicalCardStepModel {
+  const TechnicalCardStepModel({
+    this.id,
+    this.name,
+    this.description,
+    this.sortOrder,
+    this.durationMinutes,
+    this.temperatureC,
+    this.kitchenSection,
+  });
+
+  final int? id;
+  final String? name;
+  final String? description;
+  final int? sortOrder;
+  final int? durationMinutes;
+  final double? temperatureC;
+  final String? kitchenSection;
+
+  factory TechnicalCardStepModel.fromJson(Map<String, dynamic> json) =>
+      _$TechnicalCardStepModelFromJson(json);
+
+  Map<String, dynamic> toJson() => _$TechnicalCardStepModelToJson(this);
 }
 
 @JsonSerializable(fieldRename: FieldRename.snake, includeIfNull: false)
@@ -161,6 +225,7 @@ class UpdateTechnicalCardRequest {
     this.menuItemId,
     this.halalRequired = false,
     this.submitForApproval,
+    this.approvalReason,
   });
 
   final String? name;
@@ -169,6 +234,9 @@ class UpdateTechnicalCardRequest {
   final double? outputPerPortion;
   final String? outputUnit;
   final List<TechnicalCardIngredientInput>? ingredients;
+
+  /// Причина правки (`approval_reason`) — обязательна при отправке менеджером.
+  final String? approvalReason;
 
   /// Привязка к блюду меню (`menu_item_id`). После approve backend обновит
   /// название связанного блюда — так имя в таблице синхронизируется.

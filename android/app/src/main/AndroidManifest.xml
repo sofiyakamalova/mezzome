@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Требуется для сетевых запросов в release-сборке. В debug/profile Flutter
+         добавляет это автоматически, поэтому `flutter run` работал, а собранный
+         APK падал с сетевой ошибкой. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="mezzome"
         android:name="${applicationName}"

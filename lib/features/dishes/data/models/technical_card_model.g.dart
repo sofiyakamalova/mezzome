@@ -66,6 +66,21 @@ TechnicalCardModel _$TechnicalCardModelFromJson(Map<String, dynamic> json) =>
               )
               .toList() ??
           const [],
+      code: json['code'] as String?,
+      createdAt: json['created_at'] == null
+          ? null
+          : DateTime.parse(json['created_at'] as String),
+      createdBy: (json['created_by'] as num?)?.toInt(),
+      isLatest: json['is_latest'] as bool? ?? false,
+      approvalReason: json['approval_reason'] as String?,
+      steps:
+          (json['steps'] as List<dynamic>?)
+              ?.map(
+                (e) =>
+                    TechnicalCardStepModel.fromJson(e as Map<String, dynamic>),
+              )
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
@@ -91,6 +106,12 @@ Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
       'updated_at': instance.updatedAt?.toIso8601String(),
       'halal_required': instance.halalRequired,
       'ingredients': instance.ingredients.map((e) => e.toJson()).toList(),
+      'code': instance.code,
+      'created_at': instance.createdAt?.toIso8601String(),
+      'created_by': instance.createdBy,
+      'is_latest': instance.isLatest,
+      'approval_reason': instance.approvalReason,
+      'steps': instance.steps.map((e) => e.toJson()).toList(),
     };
 
 TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
@@ -104,6 +125,9 @@ TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
   costPerUnit: (json['cost_per_unit'] as num?)?.toDouble() ?? 0,
   totalCost: (json['total_cost'] as num?)?.toDouble() ?? 0,
   unit: json['unit'] as String?,
+  cleaningPct: (json['cleaning_pct'] as num?)?.toDouble(),
+  cutType: json['cut_type'] as String?,
+  nettoPerPortion: (json['netto_per_portion'] as num?)?.toDouble(),
 );
 
 Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
@@ -117,6 +141,33 @@ Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
   'cost_per_unit': instance.costPerUnit,
   'total_cost': instance.totalCost,
   'unit': instance.unit,
+  'cleaning_pct': instance.cleaningPct,
+  'cut_type': instance.cutType,
+  'netto_per_portion': instance.nettoPerPortion,
+};
+
+TechnicalCardStepModel _$TechnicalCardStepModelFromJson(
+  Map<String, dynamic> json,
+) => TechnicalCardStepModel(
+  id: (json['id'] as num?)?.toInt(),
+  name: json['name'] as String?,
+  description: json['description'] as String?,
+  sortOrder: (json['sort_order'] as num?)?.toInt(),
+  durationMinutes: (json['duration_minutes'] as num?)?.toInt(),
+  temperatureC: (json['temperature_c'] as num?)?.toDouble(),
+  kitchenSection: json['kitchen_section'] as String?,
+);
+
+Map<String, dynamic> _$TechnicalCardStepModelToJson(
+  TechnicalCardStepModel instance,
+) => <String, dynamic>{
+  'id': instance.id,
+  'name': instance.name,
+  'description': instance.description,
+  'sort_order': instance.sortOrder,
+  'duration_minutes': instance.durationMinutes,
+  'temperature_c': instance.temperatureC,
+  'kitchen_section': instance.kitchenSection,
 };
 
 UpdateTechnicalCardRequest _$UpdateTechnicalCardRequestFromJson(
@@ -135,6 +186,7 @@ UpdateTechnicalCardRequest _$UpdateTechnicalCardRequestFromJson(
   menuItemId: (json['menu_item_id'] as num?)?.toInt(),
   halalRequired: json['halal_required'] as bool? ?? false,
   submitForApproval: json['submit_for_approval'] as bool?,
+  approvalReason: json['approval_reason'] as String?,
 );
 
 Map<String, dynamic> _$UpdateTechnicalCardRequestToJson(
@@ -147,6 +199,7 @@ Map<String, dynamic> _$UpdateTechnicalCardRequestToJson(
   if (instance.outputUnit case final value?) 'output_unit': value,
   if (instance.ingredients?.map((e) => e.toJson()).toList() case final value?)
     'ingredients': value,
+  if (instance.approvalReason case final value?) 'approval_reason': value,
   if (instance.menuItemId case final value?) 'menu_item_id': value,
   'halal_required': instance.halalRequired,
   if (instance.submitForApproval case final value?)
