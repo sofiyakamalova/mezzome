@@ -119,13 +119,24 @@ class _Content extends StatelessWidget {
               ),
               _Line(label: 'secPending'.tr(), value: m(pay.pendingPayments)),
               _Line(label: 'secRefunds'.tr(), value: m(pay.refundsTotal)),
+              _Line(label: 'secCash'.tr(), value: m(pay.cashPayments)),
+              _Line(label: 'secCashless'.tr(), value: m(pay.cashlessPayments)),
               _Line(
                 label: 'secLosses'.tr(),
-                value: m(c.wasteTotal + c.writeOffsTotal),
+                value: m(c.lossesTotal),
                 hint: 'secLossesHint'.tr(),
               ),
               _Line(label: 'secCogs'.tr(), value: m(c.cogs)),
               _Line(label: 'secOpex'.tr(), value: m(c.opexTotal)),
+              _Line(
+                label: 'secInventoryPurchases'.tr(),
+                value: m(c.inventoryPurchases),
+                hint: 'secInventoryPurchasesHint'.tr(),
+              ),
+              _Line(
+                label: 'secInventoryConsumption'.tr(),
+                value: m(c.inventoryConsumption),
+              ),
             ],
           ),
         ),
@@ -615,6 +626,25 @@ class _DataQualityCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: AppSpacing.xs),
+          _CoverageRow(
+            label: 'dqRecipeCoverage'.tr(),
+            pct: quality.recipeCoveragePct,
+            total: quality.activeMenuItems,
+            missing: quality.menuItemsWithoutRecipe,
+          ),
+          _CoverageRow(
+            label: 'dqCostCoverage'.tr(),
+            pct: quality.costCoveragePct,
+            total: quality.completedOrderItems,
+            missing: quality.orderItemsWithoutCost,
+          ),
+          _CoverageRow(
+            label: 'dqReceiptCoverage'.tr(),
+            pct: quality.receiptCostCoveragePct,
+            total: quality.acceptedReceiptItems,
+            missing: quality.receiptItemsWithoutCost,
+          ),
           if (hasWarnings) ...[
             const SizedBox(height: AppSpacing.xs),
             for (final w in quality.warnings)
@@ -649,6 +679,77 @@ class _DataQualityCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Строка покрытия в карточке качества данных: процент + абсолютные счётчики.
+///
+/// Гайд §6: рядом с процентом всегда показываем счётчики. `100%` при `total=0`
+/// означает «нет данных для проверки», а не подтверждённое качество.
+class _CoverageRow extends StatelessWidget {
+  const _CoverageRow({
+    required this.label,
+    required this.pct,
+    required this.total,
+    required this.missing,
+  });
+
+  final String label;
+  final double pct;
+  final int total;
+  final int missing;
+
+  @override
+  Widget build(BuildContext context) {
+    final noData = total <= 0;
+    final color = noData
+        ? ThemePalette.onSurfaceMuted(context)
+        : (pct >= 95
+              ? AppColors.profitGreen
+              : (pct >= 80 ? AppColors.warningAmber : AppColors.dangerRed));
+    final muted = ThemePalette.onSurfaceMuted(context);
+    final detail = noData
+        ? 'dqNoData'.tr()
+        : 'dqCoverageCount'.tr(
+            namedArgs: {
+              'ok': '${total - missing}',
+              'total': '$total',
+            },
+          );
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          Text(
+            detail,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(color: muted),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 52,
+            child: Text(
+              noData ? '—' : formatPercent(pct),
+              textAlign: TextAlign.right,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+            ),
+          ),
         ],
       ),
     );

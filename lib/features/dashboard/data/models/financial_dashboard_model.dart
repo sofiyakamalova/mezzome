@@ -119,6 +119,7 @@ class FinCosts {
     this.writeOffsTotal = 0,
     this.lossesTotal = 0,
     this.inventoryPurchases = 0,
+    this.inventoryConsumption = 0,
   });
 
   final double cogs;
@@ -128,6 +129,7 @@ class FinCosts {
   final double writeOffsTotal;
   final double lossesTotal;
   final double inventoryPurchases;
+  final double inventoryConsumption;
 
   factory FinCosts.fromJson(Map<String, dynamic> j) => FinCosts(
     cogs: _d(j['cogs']),
@@ -137,6 +139,7 @@ class FinCosts {
     writeOffsTotal: _d(j['write_offs_total']),
     lossesTotal: _d(j['losses_total']),
     inventoryPurchases: _d(j['inventory_purchases']),
+    inventoryConsumption: _d(j['inventory_consumption']),
   );
 }
 
@@ -222,6 +225,11 @@ class FinDataQuality {
     this.orderItemsWithoutCost = 0,
     this.activeMenuItems = 0,
     this.menuItemsWithoutRecipe = 0,
+    this.acceptedReceiptItems = 0,
+    this.receiptItemsWithoutCost = 0,
+    this.costCoveragePct = 100,
+    this.recipeCoveragePct = 100,
+    this.receiptCostCoveragePct = 100,
     this.warnings = const [],
   });
 
@@ -230,6 +238,11 @@ class FinDataQuality {
   final int orderItemsWithoutCost;
   final int activeMenuItems;
   final int menuItemsWithoutRecipe;
+  final int acceptedReceiptItems;
+  final int receiptItemsWithoutCost;
+  final double costCoveragePct;
+  final double recipeCoveragePct;
+  final double receiptCostCoveragePct;
   final List<String> warnings;
 
   factory FinDataQuality.fromJson(Map<String, dynamic> j) => FinDataQuality(
@@ -238,6 +251,11 @@ class FinDataQuality {
     orderItemsWithoutCost: _i(j['order_items_without_cost']),
     activeMenuItems: _i(j['active_menu_items']),
     menuItemsWithoutRecipe: _i(j['menu_items_without_recipe']),
+    acceptedReceiptItems: _i(j['accepted_receipt_items']),
+    receiptItemsWithoutCost: _i(j['receipt_items_without_cost']),
+    costCoveragePct: _d(j['cost_coverage_pct']),
+    recipeCoveragePct: _d(j['recipe_coverage_pct']),
+    receiptCostCoveragePct: _d(j['receipt_cost_coverage_pct']),
     warnings:
         (j['warnings'] as List?)?.map((e) => e.toString()).toList() ?? const [],
   );
