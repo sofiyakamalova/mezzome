@@ -12,6 +12,7 @@ import 'package:mezzome/features/auth/presentation/screens/login_screen.dart';
 import 'package:mezzome/features/approvals/presentation/screens/approvals_screen.dart';
 import 'package:mezzome/features/approvals/presentation/screens/my_requests_screen.dart';
 import 'package:mezzome/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:mezzome/features/dashboard/presentation/screens/financial_dashboard_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/create_plan_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/dish_detail_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/dishes_screen.dart';
@@ -93,6 +94,15 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.expenses,
+                name: AppRoutes.expensesName,
+                builder: (context, state) => const FinancialDashboardScreen(),
+              ),
+            ],
+          ),
         ],
       ),
       GoRoute(
@@ -141,6 +151,12 @@ String? _redirect(AsyncValue<UserModel?> authSession, GoRouterState state) {
   if (location == AppRoutes.approvals &&
       !usesDirectorShell(user.role)) {
     appLogger.i('Redirect → ${AppRoutes.dishes} (no approvals access)');
+    return AppRoutes.dishes;
+  }
+
+  if (location == AppRoutes.expenses &&
+      !usesDirectorShell(user.role)) {
+    appLogger.i('Redirect → ${AppRoutes.dishes} (no expenses access)');
     return AppRoutes.dishes;
   }
 

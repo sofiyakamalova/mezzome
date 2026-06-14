@@ -53,9 +53,13 @@ ManagerCostPerHeadItem _$ManagerCostPerHeadItemFromJson(
   Map<String, dynamic> json,
 ) => ManagerCostPerHeadItem(
   serviceDate: json['service_date'] as String?,
-  actualFoodCost: (json['actual_food_cost'] as num?)?.toDouble() ?? 0,
+  actualFoodCost: json['actual_food_cost'] == null
+      ? 0
+      : _toDouble(json['actual_food_cost']),
   mealsServed: (json['meals_served'] as num?)?.toInt() ?? 0,
-  costPerHead: (json['cost_per_head'] as num?)?.toDouble() ?? 0,
+  costPerHead: json['cost_per_head'] == null
+      ? 0
+      : _toDouble(json['cost_per_head']),
 );
 
 ManagerVarianceBreakdownReport _$ManagerVarianceBreakdownReportFromJson(
@@ -78,9 +82,11 @@ ManagerVarianceBreakdownReport _$ManagerVarianceBreakdownReportFromJson(
 ManagerVarianceItem _$ManagerVarianceItemFromJson(Map<String, dynamic> json) =>
     ManagerVarianceItem(
       category: json['category'] as String?,
-      costImpact: (json['cost_impact'] as num?)?.toDouble() ?? 0,
+      costImpact: json['cost_impact'] == null
+          ? 0
+          : _toDouble(json['cost_impact']),
       count: (json['count'] as num?)?.toInt() ?? 0,
-      lossQty: (json['loss_qty'] as num?)?.toDouble() ?? 0,
+      lossQty: json['loss_qty'] == null ? 0 : _toDouble(json['loss_qty']),
     );
 
 ManagerComplianceDigest _$ManagerComplianceDigestFromJson(

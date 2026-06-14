@@ -4,21 +4,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
-import 'package:mezzome/core/logging/app_logger.dart';
-import 'package:mezzome/core/widgets/app_flushbar.dart';
-import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
-import 'package:dio/dio.dart';
+import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/features/dishes/data/models/dish_model.dart';
+import 'package:mezzome/features/dishes/data/models/menu_category_model.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_model.dart';
-import 'package:mezzome/features/dishes/data/repository/dishes_repository.dart';
 import 'package:mezzome/features/dishes/domain/menu_service_type.dart';
+import 'package:mezzome/features/dishes/presentation/providers/create_plan_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/providers/create_plan_state.dart';
+import 'package:mezzome/features/dishes/presentation/providers/production_grid_notifier.dart';
 
-/// Экран создания производственного плана. Открыт роли `manager` (router-гейт);
-/// репозиторий разводит ручки по роли: manager → `POST /manager/production-plans`,
-/// chef → `POST /chef/production-plans`. Собирается план на день: кухня · приём
-/// пищи · дата · позиции (слот · блюдо · порции) → черновик на согласование.
+/// Экран создания производственного плана (роль `manager`, router-гейт).
+/// Состояние держит [CreatePlanNotifier]: справочники, черновик строк,
+/// валидация и отправка. Слот строки = категория выбранного блюда.
 class CreatePlanScreen extends ConsumerStatefulWidget {
   const CreatePlanScreen({super.key});
 
@@ -26,263 +25,165 @@ class CreatePlanScreen extends ConsumerStatefulWidget {
   ConsumerState<CreatePlanScreen> createState() => _CreatePlanScreenState();
 }
 
-class _PlanItemDraft {
-  _PlanItemDraft();
-
-  int? menuItemId;
-  final slotController = TextEditingController();
-  final portionsController = TextEditingController();
-
-  void dispose() {
-    slotController.dispose();
-    portionsController.dispose();
-  }
-}
-
 class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
-  MenuServiceType _service = MenuServiceType.lunch;
-  DateTime _date = DateFormatUtil.today;
   final _peopleController = TextEditingController();
-  final List<_PlanItemDraft> _items = [_PlanItemDraft()];
-
-  List<KitchenModel> _kitchens = const [];
-  KitchenModel? _kitchen;
-  List<DishModel> _dishes = const [];
-  bool _loading = true;
-  String? _loadError;
-  bool _submitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
-  }
+  final _reserveController = TextEditingController();
+  final _notesController = TextEditingController();
 
   @override
   void dispose() {
     _peopleController.dispose();
-    for (final item in _items) {
-      item.dispose();
-    }
+    _reserveController.dispose();
+    _notesController.dispose();
     super.dispose();
   }
 
-  Future<void> _bootstrap() async {
-    setState(() {
-      _loading = true;
-      _loadError = null;
-    });
-    try {
-      final repo = ref.read(dishesRepositoryProvider);
-      final results = await Future.wait([
-        repo.planKitchens(),
-        repo.fetchCatalogDishes(),
-      ]);
-      if (!mounted) return;
-      final kitchens = results[0] as List<KitchenModel>;
-      setState(() {
-        _kitchens = kitchens;
-        _kitchen = kitchens.isNotEmpty ? kitchens.first : null;
-        _dishes = results[1] as List<DishModel>;
-        _loading = false;
-      });
-    } on DioException catch (e) {
-      appLogger.w('Create plan bootstrap failed: ${e.response?.statusCode}');
-      if (!mounted) return;
-      setState(() {
-        _loadError = 'createPlanLoadError'.tr();
-        _loading = false;
-      });
-    }
-  }
+  CreatePlanNotifier get _notifier =>
+      ref.read(createPlanNotifierProvider.notifier);
 
-  Future<void> _pickDate() async {
+  Future<void> _pickDate(DateTime current) async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: DateFormatUtil.today.subtract(const Duration(days: 1)),
+      initialDate: current,
+      firstDate: DateFormatUtil.today,
       lastDate: DateFormatUtil.today.add(const Duration(days: 365)),
     );
     if (picked != null) {
-      setState(() => _date = picked);
+      _notifier.setDate(picked);
     }
-  }
-
-  void _addItem() => setState(() => _items.add(_PlanItemDraft()));
-
-  void _removeItem(int index) {
-    setState(() {
-      _items.removeAt(index).dispose();
-    });
   }
 
   Future<void> _submit() async {
-    final kitchen = _kitchen;
-    if (kitchen == null) return;
-
-    // Берём только заполненные позиции (блюдо + порции > 0).
-    final inputs = <ProductionPlanItemInput>[];
-    for (var i = 0; i < _items.length; i++) {
-      final item = _items[i];
-      final portions = int.tryParse(item.portionsController.text.trim()) ?? 0;
-      if (item.menuItemId == null || portions <= 0) continue;
-      final slot = item.slotController.text.trim();
-      inputs.add(
-        ProductionPlanItemInput(
-          menuItemId: item.menuItemId!,
-          plannedPortions: portions,
-          slotKey: 'slot_${i + 1}',
-          slotTitle: slot.isEmpty ? null : slot,
-          sortOrder: i + 1,
-        ),
-      );
-    }
-
-    if (inputs.isEmpty) {
-      AppFlushbar.showError(context, 'createPlanNoItems'.tr());
+    FocusScope.of(context).unfocus();
+    final plan = await _notifier.submit();
+    if (!mounted) return;
+    if (plan == null) {
+      final err = ref.read(createPlanNotifierProvider).submitError;
+      AppFlushbar.showError(context, err ?? 'createPlanError'.tr());
       return;
     }
-
-    setState(() => _submitting = true);
-    try {
-      final repo = ref.read(dishesRepositoryProvider);
-      final plan = await repo.createProductionPlan(
-        ProductionPlanCreateRequest(
-          kitchenId: kitchen.id,
-          serviceType: _service.apiValue,
-          plannedDate: DateFormatUtil.apiDate(_date),
-          peopleCount: int.tryParse(_peopleController.text.trim()),
-          items: inputs,
-        ),
-      );
-      if (!mounted) return;
-      // Сбрасываем форму под новый план.
-      setState(() {
-        for (final item in _items) {
-          item.dispose();
-        }
-        _items
-          ..clear()
-          ..add(_PlanItemDraft());
-        _peopleController.clear();
-        _submitting = false;
-      });
-      await _showCreatedDialog(plan.id);
-    } on DioException catch (e) {
-      appLogger.w('Create plan failed: ${e.response?.data}');
-      if (!mounted) return;
-      setState(() => _submitting = false);
-      AppFlushbar.showError(
-        context,
-        apiErrorDetails(e) ?? 'createPlanError'.tr(),
-      );
-    }
+    // Предзагружаем недельную сетку на дату плана, чтобы он сразу был виден.
+    final date = ref.read(createPlanNotifierProvider).date;
+    ref.read(productionGridNotifierProvider.notifier).load(anchorDate: date);
+    // Чистим поля-контроллеры под новый план.
+    _peopleController.clear();
+    _reserveController.clear();
+    _notesController.clear();
+    _notifier.reset();
+    await _showCreatedDialog(plan);
   }
 
-  /// После создания: предлагаем проверить остатки (завершающий шаг шефа).
-  Future<void> _showCreatedDialog(int planId) async {
-    final action = await showDialog<String>(
+  /// Итог создания. Наличие остатков берём прямо из ответа (`stock_available`
+  /// по позициям) — отдельной ручки check-stock у менеджера нет.
+  Future<void> _showCreatedDialog(ProductionPlanDetail plan) async {
+    final shortages =
+        plan.items.where((i) => i.stockAvailable == false).length;
+    final stockLine = shortages == 0
+        ? 'checkStockOk'.tr()
+        : 'checkStockShort'.tr(namedArgs: {'count': '$shortages'});
+
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text('createPlanSuccessTitle'.tr()),
-        content: Text('createPlanSuccess'.tr()),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('createPlanSuccess'.tr()),
+            const SizedBox(height: AppSpacing.xs),
+            Row(
+              children: [
+                Icon(
+                  shortages == 0
+                      ? Icons.check_circle_outline
+                      : Icons.warning_amber_rounded,
+                  size: 18,
+                  color: shortages == 0
+                      ? AppColors.profitGreen
+                      : AppColors.warningAmber,
+                ),
+                const SizedBox(width: 6),
+                Expanded(child: Text(stockLine)),
+              ],
+            ),
+          ],
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop('done'),
-            child: Text('closeButton'.tr()),
-          ),
           FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop('check'),
-            child: Text('createPlanCheckStock'.tr()),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text('closeButton'.tr()),
           ),
         ],
       ),
     );
-    if (action == 'check') {
-      await _checkStock(planId);
-    }
-  }
-
-  Future<void> _checkStock(int planId) async {
-    try {
-      final res = await ref.read(dishesRepositoryProvider).checkStock(planId);
-      if (!mounted) return;
-      final msg = res.canFulfill
-          ? 'checkStockOk'.tr()
-          : 'checkStockShort'.tr(namedArgs: {'count': '${res.shortages}'});
-      AppFlushbar.show(context, msg, isError: !res.canFulfill);
-    } on DioException catch (e) {
-      appLogger.w('Check stock failed: ${e.response?.data}');
-      if (!mounted) return;
-      AppFlushbar.showError(
-        context,
-        apiErrorDetails(e) ?? 'checkStockError'.tr(),
-      );
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(createPlanNotifierProvider);
+
     return Scaffold(
       appBar: AppBar(title: Text('createPlanTitle'.tr())),
-      // Тап по пустому месту убирает фокус → прячет клавиатуру.
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => FocusScope.of(context).unfocus(),
-        child: _loading
+        child: state.isBootstrapping
             ? const Center(child: CircularProgressIndicator())
-            : _loadError != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(AppSpacing.lg),
-                      child: Text(_loadError!, textAlign: TextAlign.center),
-                    ),
+            : state.bootstrapError != null
+                ? _BootstrapError(
+                    message: state.bootstrapError!,
+                    onRetry: _notifier.retryBootstrap,
                   )
-                : _buildForm(context),
+                : _buildForm(context, state),
       ),
     );
   }
 
-  Widget _buildForm(BuildContext context) {
+  Widget _buildForm(BuildContext context, CreatePlanState state) {
     final muted = ThemePalette.onSurfaceMuted(context);
+    final categoryById = {for (final c in state.categories) c.id: c};
+    final dishById = {for (final d in state.catalog) d.id: d};
+
     return Column(
       children: [
         Expanded(
           child: ListView(
             padding: const EdgeInsets.all(AppSpacing.md),
             children: [
-              if (_kitchens.length > 1)
+              // Кухня
+              if (state.hasMultipleKitchens)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: DropdownButtonFormField<int>(
-                    initialValue: _kitchen?.id,
+                    initialValue: state.kitchenId,
                     isExpanded: true,
                     decoration: InputDecoration(
                       labelText: 'createPlanKitchenLabel'.tr(),
                     ),
                     items: [
-                      for (final k in _kitchens)
+                      for (final k in state.kitchens)
                         DropdownMenuItem(
                           value: k.id,
                           child: Text(k.name ?? '#${k.id}'),
                         ),
                     ],
-                    onChanged: (id) => setState(() {
-                      _kitchen = _kitchens.firstWhere((k) => k.id == id);
-                    }),
+                    onChanged: _notifier.setKitchen,
                   ),
                 )
-              else if (_kitchen != null)
+              else if (state.kitchens.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.sm),
                   child: Text(
                     'createPlanKitchen'.tr(
                       namedArgs: {
-                        'kitchen': _kitchen!.name ?? '#${_kitchen!.id}',
+                        'kitchen': state.kitchens.first.name ??
+                            '#${state.kitchens.first.id}',
                       },
                     ),
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: muted),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: muted),
                   ),
                 ),
               // Приём пищи
@@ -292,19 +193,18 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                   for (final s in MenuServiceType.values)
                     ButtonSegment(value: s, label: Text(s.label)),
                 ],
-                selected: {_service},
-                onSelectionChanged: (sel) =>
-                    setState(() => _service = sel.first),
+                selected: {state.service},
+                onSelectionChanged: (sel) => _notifier.setService(sel.first),
               ),
               const SizedBox(height: AppSpacing.sm),
-              // Дата + люди
+              // Дата + число едоков
               Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: _pickDate,
+                      onPressed: () => _pickDate(state.date),
                       icon: const Icon(Icons.calendar_today_rounded, size: 18),
-                      label: Text(DateFormatUtil.apiDate(_date)),
+                      label: Text(DateFormatUtil.apiDate(state.date)),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -312,13 +212,48 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                     child: TextField(
                       controller: _peopleController,
                       keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       decoration: InputDecoration(
                         labelText: 'createPlanPeople'.tr(),
                         isDense: true,
                       ),
+                      onChanged: (v) =>
+                          _notifier.setPeopleCount(int.tryParse(v.trim())),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              // Резерв + заметка
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: TextField(
+                      controller: _reserveController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(
+                        labelText: 'createPlanReserve'.tr(),
+                        isDense: true,
+                        hintText: '1.0',
+                      ),
+                      onChanged: (v) => _notifier.setReserveCoefficient(
+                        double.tryParse(v.trim().replaceAll(',', '.')),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: TextField(
+                      controller: _notesController,
+                      decoration: InputDecoration(
+                        labelText: 'createPlanNotes'.tr(),
+                        isDense: true,
+                      ),
+                      onChanged: _notifier.setNotes,
                     ),
                   ),
                 ],
@@ -326,35 +261,44 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
               const SizedBox(height: AppSpacing.md),
               Text(
                 'createPlanItemsTitle'.tr(),
-                style: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(color: muted, fontWeight: FontWeight.w500),
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: muted,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: AppSpacing.xs),
-              for (var i = 0; i < _items.length; i++)
+              for (final item in state.items)
                 _PlanItemCard(
-                  index: i,
-                  item: _items[i],
-                  dishes: _dishes,
-                  onChanged: () => setState(() {}),
-                  onRemove: _items.length > 1 ? () => _removeItem(i) : null,
+                  key: ValueKey(item.key),
+                  item: item,
+                  dishes: state.catalog,
+                  category: _categoryFor(item, dishById, categoryById),
+                  onDish: (id) => _notifier.setItemDish(item.key, id),
+                  onPortions: (p) => _notifier.setItemPortions(item.key, p),
+                  onRemove: state.items.length > 1
+                      ? () => _notifier.removeItem(item.key)
+                      : null,
                 ),
               const SizedBox(height: AppSpacing.xs),
               OutlinedButton.icon(
-                onPressed: _addItem,
+                onPressed: _notifier.addItem,
                 icon: const Icon(Icons.add, size: 18),
                 label: Text('createPlanAddItem'.tr()),
               ),
+              if (state.submitError != null) ...[
+                const SizedBox(height: AppSpacing.sm),
+                _ErrorBanner(message: state.submitError!),
+              ],
             ],
           ),
         ),
-        // Нижняя кнопка отправки
         SafeArea(
           top: false,
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: FilledButton.icon(
-              onPressed: _submitting ? null : _submit,
-              icon: _submitting
+              onPressed: state.canSubmit ? _submit : null,
+              icon: state.isSubmitting
                   ? const SizedBox(
                       width: 16,
                       height: 16,
@@ -371,25 +315,39 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
       ],
     );
   }
+
+  MenuCategoryModel? _categoryFor(
+    PlanDraftItem item,
+    Map<int, DishModel> dishById,
+    Map<int, MenuCategoryModel> categoryById,
+  ) {
+    final dish = item.menuItemId == null ? null : dishById[item.menuItemId];
+    final catId = dish?.categoryId;
+    return catId == null ? null : categoryById[catId];
+  }
 }
 
 class _PlanItemCard extends StatelessWidget {
   const _PlanItemCard({
-    required this.index,
+    super.key,
     required this.item,
     required this.dishes,
-    required this.onChanged,
+    required this.category,
+    required this.onDish,
+    required this.onPortions,
     required this.onRemove,
   });
 
-  final int index;
-  final _PlanItemDraft item;
+  final PlanDraftItem item;
   final List<DishModel> dishes;
-  final VoidCallback onChanged;
+  final MenuCategoryModel? category;
+  final ValueChanged<int?> onDish;
+  final ValueChanged<int?> onPortions;
   final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
+    final muted = ThemePalette.onSurfaceMuted(context);
     return Container(
       margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       padding: const EdgeInsets.all(AppSpacing.sm),
@@ -399,6 +357,7 @@ class _PlanItemCard extends StatelessWidget {
         border: Border.all(color: ThemePalette.border(context), width: 0.5),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
@@ -421,10 +380,23 @@ class _PlanItemCard extends StatelessWidget {
                         ),
                       ),
                   ],
-                  onChanged: (value) {
-                    item.menuItemId = value;
-                    onChanged();
-                  },
+                  onChanged: onDish,
+                ),
+              ),
+              SizedBox(
+                width: 96,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: AppSpacing.xs),
+                  child: TextFormField(
+                    initialValue: item.portions?.toString() ?? '',
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: 'createPlanPortions'.tr(),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => onPortions(int.tryParse(v.trim())),
+                  ),
                 ),
               ),
               if (onRemove != null)
@@ -436,32 +408,105 @@ class _PlanItemCard extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: AppSpacing.xs),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  controller: item.slotController,
-                  decoration: InputDecoration(
-                    labelText: 'createPlanSlot'.tr(),
-                    isDense: true,
+          if (item.menuItemId != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 2),
+              child: Row(
+                children: [
+                  Icon(Icons.label_outline, size: 13, color: muted),
+                  const SizedBox(width: 4),
+                  Text(
+                    category?.name ?? 'createPlanSlotNone'.tr(),
+                    style: Theme.of(
+                      context,
+                    ).textTheme.labelSmall?.copyWith(color: muted),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: AppSpacing.xs),
-              Expanded(
-                child: TextField(
-                  controller: item.portionsController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: InputDecoration(
-                    labelText: 'createPlanPortions'.tr(),
-                    isDense: true,
-                  ),
-                ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BootstrapError extends StatelessWidget {
+  const _BootstrapError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 44,
+              color: ThemePalette.onSurfaceMuted(context),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              'createPlanLoadError'.tr(),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: AppSpacing.xs),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: ThemePalette.onSurfaceMuted(context),
               ),
-            ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            FilledButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: Text('retryButton'.tr()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final isLight = ThemePalette.isLight(context);
+    final bg = isLight
+        ? AppColors.dangerRed.withValues(alpha: 0.08)
+        : AppColors.dangerRed.withValues(alpha: 0.14);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+        border: Border.all(color: AppColors.dangerRed.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, size: 18, color: AppColors.dangerRed),
+          const SizedBox(width: AppSpacing.xs),
+          Expanded(
+            child: Text(
+              message,
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.dangerRed),
+            ),
           ),
         ],
       ),

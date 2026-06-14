@@ -17,6 +17,7 @@ class MainShellScreen extends ConsumerWidget {
   static const int approvalsBranch = 3;
   static const int myRequestsBranch = 4;
   static const int createPlanBranch = 5;
+  static const int expensesBranch = 6;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,6 +34,12 @@ class MainShellScreen extends ConsumerWidget {
               icon: Icons.dashboard_outlined,
               activeIcon: Icons.dashboard,
               label: 'navDashboard'.tr(),
+            ),
+            _BarItem(
+              branch: expensesBranch,
+              icon: Icons.insights_outlined,
+              activeIcon: Icons.insights,
+              label: 'navFinance'.tr(),
             ),
             _BarItem(
               branch: dishesBranch,

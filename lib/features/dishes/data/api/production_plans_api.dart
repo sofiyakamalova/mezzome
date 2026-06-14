@@ -146,15 +146,15 @@ abstract class ProductionPlansApi {
     @Body() ProductionPlanCreateRequest request,
   );
 
-  /// Проверка остатков по плану — завершающее действие шефа перед
-  /// согласованием. Ответ нетипизирован (`dto.ProductionPlanStockCheckResponse`).
+  /// Проверка остатков по плану — завершающее действие перед согласованием
+  /// (`dto.ProductionPlanStockCheckResponse`).
   @POST('/chef/production-plans/{id}/check-stock')
-  Future<dynamic> checkChefPlanStock(@Path('id') int id);
+  Future<ProductionPlanStockCheck> checkChefPlanStock(@Path('id') int id);
 
   /// Проверка остатков по плану менеджером
-  /// (`POST /manager/production-plans/{id}/check-stock`). Ответ нетипизирован.
+  /// (`POST /manager/production-plans/{id}/check-stock`).
   @POST('/manager/production-plans/{id}/check-stock')
-  Future<dynamic> checkManagerPlanStock(@Path('id') int id);
+  Future<ProductionPlanStockCheck> checkManagerPlanStock(@Path('id') int id);
 
   /// Меняет количество порций ячейки недельного плана. Это НЕ базовые порции
   /// техкарты (`base_portions`) — отдельная сущность. После правки backend

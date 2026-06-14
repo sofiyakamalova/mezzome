@@ -1,4 +1,6 @@
 import 'package:dio/dio.dart';
+import 'package:mezzome/features/dashboard/data/models/expenses_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/financial_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
 import 'package:retrofit/retrofit.dart';
@@ -14,6 +16,22 @@ abstract class DashboardApi {
   /// [period] — `day` / `week` / `month` (по умолчанию неделя на бэке).
   @GET('/manager/reports/dashboard')
   Future<ManagerDashboardModel> getManagerDashboard({
+    @Query('period') String? period,
+    @Query('date') String? date,
+  });
+
+  /// Главный финансовый дашборд («Обзор», §5 гайда): полный P&L в объекте
+  /// `financial`. [period] — `day`/`week`/`month`/`year`.
+  @GET('/dashboard')
+  Future<FinancialDashboard> getFinancialDashboard({
+    @Query('period') String? period,
+    @Query('date') String? date,
+  });
+
+  /// Дашборд расходов: суммы по категориям и итог за период (§8 гайда).
+  /// Только расход, без выручки. [period] — `day`/`week`/`month`/`year`.
+  @GET('/dashboard/expenses')
+  Future<ExpensesDashboardModel> getExpenses({
     @Query('period') String? period,
     @Query('date') String? date,
   });

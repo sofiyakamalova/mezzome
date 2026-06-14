@@ -12,6 +12,7 @@ import 'package:mezzome/features/dishes/data/api/dishes_api.dart';
 import 'package:mezzome/features/dishes/data/api/production_plans_api.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/features/dishes/data/models/dish_model.dart';
+import 'package:mezzome/features/dishes/data/models/menu_category_model.dart';
 import 'package:mezzome/features/dishes/data/models/plan_variance_model.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_model.dart';
 import 'package:mezzome/features/dishes/domain/menu_service_type.dart';
@@ -23,25 +24,19 @@ class DishesRepository {
     required DishesApi dishesApi,
     required ProductionPlansApi productionPlansApi,
     required Ref ref,
-  })  : _dishesApi = dishesApi,
-        _productionPlansApi = productionPlansApi,
-        _ref = ref;
+  }) : _dishesApi = dishesApi,
+       _productionPlansApi = productionPlansApi,
+       _ref = ref;
 
   final DishesApi _dishesApi;
   final ProductionPlansApi _productionPlansApi;
   final Ref _ref;
 
-  /// Текущий пользователь ходит по директорским (manager) ручкам, а не chef.
-  /// Используется для выбора `/manager/...` vs `/chef/...` эндпоинтов.
   bool get usesManagerApi {
     final role = _ref.read(authSessionProvider).valueOrNull?.role;
     return role != null && usesDirectorShell(role);
   }
 
-  /// Меню на дату через production plans (chef / supervisor API).
-  ///
-  /// [serviceType] — фильтр `service_type` в list (breakfast / lunch / dinner).
-  /// Для дашборда недели передавайте выбранный приём пищи — один план на день.
   Future<ScheduleFetchResult> fetchScheduleForDate(
     DateTime date, {
     MenuServiceType? serviceType,
@@ -110,7 +105,8 @@ class DishesRepository {
         scheduled.add(
           ScheduledMenuItem(
             menuItemId: item.menuItemId,
-            name: nameById[item.menuItemId] ??
+            name:
+                nameById[item.menuItemId] ??
                 'dishFallbackName'.tr(namedArgs: {'id': '${item.menuItemId}'}),
             plannedPortions: item.plannedPortions,
             serviceType: plan.serviceType ?? detail.serviceType ?? '—',
@@ -223,8 +219,10 @@ class DishesRepository {
     }
     final dateStr = DateFormatUtil.apiDate(date ?? DateFormatUtil.today);
     try {
-      final plans =
-          await _productionPlansApi.getManagerPlans(dateStr, pageSize: 1);
+      final plans = await _productionPlansApi.getManagerPlans(
+        dateStr,
+        pageSize: 1,
+      );
       if (plans.plans.isEmpty) {
         appLogger.i('Manager variance: no plan for $dateStr');
         return null;
@@ -269,26 +267,27 @@ class DishesRepository {
     return plan;
   }
 
-  /// Проверка остатков по плану. Возвращает «хватает/не хватает» и число
-  /// дефицитных позиций (форма ответа нетипизирована — парсим лояльно).
-  Future<({bool canFulfill, int shortages})> checkStock(int planId) async {
+  /// Проверка остатков по плану: хватает ли, дефициты и общая стоимость.
+  Future<ProductionPlanStockCheck> checkStock(int planId) async {
     final role = _ref.read(authSessionProvider).valueOrNull?.role;
     final asManager = role != null && usesDirectorShell(role);
-    final raw = asManager
+    final result = asManager
         ? await _productionPlansApi.checkManagerPlanStock(planId)
         : await _productionPlansApi.checkChefPlanStock(planId);
-    var canFulfill = false;
-    var shortages = 0;
-    if (raw is Map) {
-      final m = raw.map((k, v) => MapEntry('$k', v));
-      canFulfill = m['can_fulfill'] == true || m['stock_available'] == true;
-      final sh = m['shortages'];
-      if (sh is List) shortages = sh.length;
-    }
     appLogger.i(
-      'Plan $planId stock check: can_fulfill=$canFulfill, shortages=$shortages',
+      'Plan $planId stock check: can_fulfill=${result.canFulfill}, '
+      'shortages=${result.shortages.length}',
     );
-    return (canFulfill: canFulfill, shortages: shortages);
+    return result;
+  }
+
+  /// Категории меню — источник слотов при составлении плана.
+  Future<List<MenuCategoryModel>> fetchMenuCategories() async {
+    final response = await _dishesApi.getCommonMenuCategories();
+    final active = response.categories.where((c) => c.isActive).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    appLogger.i('Menu categories: ${active.length}');
+    return active;
   }
 
   /// Планы для очереди утверждения супервайзера на дату.
@@ -301,14 +300,17 @@ class DishesRepository {
       status: status,
       pageSize: _productionPlansPageSize,
     );
-    appLogger.i('Supervisor plans (${DateFormatUtil.apiDate(date)}): '
-        '${res.plans.length}');
+    appLogger.i(
+      'Supervisor plans (${DateFormatUtil.apiDate(date)}): '
+      '${res.plans.length}',
+    );
     return res.plans;
   }
 
   Future<void> approvePlan(int id, {bool force = false}) async {
-    await _productionPlansApi
-        .approveSupervisorPlan(id, <String, dynamic>{'force': force});
+    await _productionPlansApi.approveSupervisorPlan(id, <String, dynamic>{
+      'force': force,
+    });
     appLogger.i('Plan $id approved (force=$force)');
   }
 
@@ -321,15 +323,16 @@ class DishesRepository {
   }
 
   Future<void> rejectPlan(int id, {required String reason}) async {
-    await _productionPlansApi
-        .rejectSupervisorPlan(id, <String, dynamic>{'reason': reason});
+    await _productionPlansApi.rejectSupervisorPlan(id, <String, dynamic>{
+      'reason': reason,
+    });
     appLogger.i('Plan $id rejected');
   }
 
   static const int _productionPlansPageSize = 50;
 
   Future<({ProductionPlanListResponse list, bool usedChefApi})>
-      _fetchProductionPlanList({
+  _fetchProductionPlanList({
     required String dateStr,
     required UserRole role,
     required bool preferChefApi,
@@ -417,5 +420,5 @@ final dishesRepositoryProvider = Provider<DishesRepository>((ref) {
 /// «План vs факт» по плану текущего дня — для секции на дашборде менеджера.
 final managerDayVarianceProvider =
     FutureProvider.autoDispose<PlanVarianceReport?>((ref) {
-  return ref.watch(dishesRepositoryProvider).loadManagerDayVariance();
-});
+      return ref.watch(dishesRepositoryProvider).loadManagerDayVariance();
+    });

@@ -76,9 +76,6 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
                 : 'menuGridTitleService'.tr(
                     namedArgs: {'service': widget.serviceTitle!},
                   ),
-            badge: 'menuGridSize'.tr(
-              namedArgs: {'rows': '${rows.length}', 'days': '${days.length}'},
-            ),
           ),
           const _GridLegend(),
           Divider(height: 1, thickness: 1, color: border),
@@ -464,10 +461,9 @@ class _DishLine extends StatelessWidget {
 }
 
 class _PanelHeader extends StatelessWidget {
-  const _PanelHeader({required this.title, required this.badge});
+  const _PanelHeader({required this.title});
 
   final String title;
-  final String badge;
 
   @override
   Widget build(BuildContext context) {
@@ -478,33 +474,11 @@ class _PanelHeader extends StatelessWidget {
         AppSpacing.sm,
         AppSpacing.xs,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-            decoration: BoxDecoration(
-              color: ThemePalette.isLight(context)
-                  ? AppColorsLight.surfaceSecondary
-                  : Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
-            ),
-            child: Text(
-              badge,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: ThemePalette.onSurfaceMuted(context),
-                fontFamily: 'monospace',
-              ),
-            ),
-          ),
-        ],
+      child: Text(
+        title,
+        style: Theme.of(
+          context,
+        ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }

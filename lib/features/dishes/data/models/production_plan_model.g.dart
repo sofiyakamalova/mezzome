@@ -53,6 +53,11 @@ ProductionPlanDetail _$ProductionPlanDetailFromJson(
   serviceType: json['service_type'] as String?,
   status: json['status'] as String?,
   plannedDate: json['planned_date'] as String?,
+  kitchenId: (json['kitchen_id'] as num?)?.toInt(),
+  peopleCount: (json['people_count'] as num?)?.toInt(),
+  reserveCoefficient: _dn(json['reserve_coefficient']),
+  notes: json['notes'] as String?,
+  createdAt: json['created_at'] as String?,
   items:
       (json['items'] as List<dynamic>?)
           ?.map((e) => ProductionPlanItem.fromJson(e as Map<String, dynamic>))
@@ -67,6 +72,11 @@ Map<String, dynamic> _$ProductionPlanDetailToJson(
   'service_type': instance.serviceType,
   'status': instance.status,
   'planned_date': instance.plannedDate,
+  'kitchen_id': instance.kitchenId,
+  'people_count': instance.peopleCount,
+  'reserve_coefficient': instance.reserveCoefficient,
+  'notes': instance.notes,
+  'created_at': instance.createdAt,
   'items': instance.items.map((e) => e.toJson()).toList(),
 };
 
@@ -74,19 +84,60 @@ ProductionPlanItem _$ProductionPlanItemFromJson(Map<String, dynamic> json) =>
     ProductionPlanItem(
       id: (json['id'] as num).toInt(),
       menuItemId: (json['menu_item_id'] as num).toInt(),
+      planId: (json['plan_id'] as num?)?.toInt(),
       plannedPortions: (json['planned_portions'] as num?)?.toInt() ?? 0,
-      theoreticalCost: (json['theoretical_cost'] as num?)?.toDouble() ?? 0,
+      theoreticalCost: json['theoretical_cost'] == null
+          ? 0
+          : _d(json['theoretical_cost']),
       technicalCardId: (json['technical_card_id'] as num?)?.toInt(),
+      slotKey: json['slot_key'] as String?,
+      slotTitle: json['slot_title'] as String?,
+      sortOrder: (json['sort_order'] as num?)?.toInt(),
+      stockAvailable: json['stock_available'] as bool?,
     );
 
 Map<String, dynamic> _$ProductionPlanItemToJson(ProductionPlanItem instance) =>
     <String, dynamic>{
       'id': instance.id,
       'menu_item_id': instance.menuItemId,
+      'plan_id': instance.planId,
       'planned_portions': instance.plannedPortions,
       'theoretical_cost': instance.theoreticalCost,
       'technical_card_id': instance.technicalCardId,
+      'slot_key': instance.slotKey,
+      'slot_title': instance.slotTitle,
+      'sort_order': instance.sortOrder,
+      'stock_available': instance.stockAvailable,
     };
+
+ProductionPlanStockCheck _$ProductionPlanStockCheckFromJson(
+  Map<String, dynamic> json,
+) => ProductionPlanStockCheck(
+  canFulfill: json['can_fulfill'] as bool? ?? false,
+  totalCost: json['total_cost'] == null ? 0 : _d(json['total_cost']),
+  shortages:
+      (json['shortages'] as List<dynamic>?)
+          ?.map(
+            (e) =>
+                ProductionPlanStockShortage.fromJson(e as Map<String, dynamic>),
+          )
+          .toList() ??
+      const [],
+  warnings:
+      (json['warnings'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+);
+
+ProductionPlanStockShortage _$ProductionPlanStockShortageFromJson(
+  Map<String, dynamic> json,
+) => ProductionPlanStockShortage(
+  ingredient: json['ingredient'] as String?,
+  ingredientId: (json['ingredient_id'] as num?)?.toInt(),
+  requiredQty: json['required_qty'] == null ? 0 : _d(json['required_qty']),
+  availableQty: json['available_qty'] == null ? 0 : _d(json['available_qty']),
+  deficitQty: json['deficit_qty'] == null ? 0 : _d(json['deficit_qty']),
+  unit: json['unit'] as String?,
+);
 
 UpdateProductionPlanItemRequest _$UpdateProductionPlanItemRequestFromJson(
   Map<String, dynamic> json,

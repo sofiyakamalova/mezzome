@@ -621,12 +621,12 @@ class _ProductionPlansApi implements ProductionPlansApi {
   }
 
   @override
-  Future<dynamic> checkChefPlanStock(int id) async {
+  Future<ProductionPlanStockCheck> checkChefPlanStock(int id) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
     final _headers = <String, dynamic>{};
     const Map<String, dynamic>? _data = null;
-    final _options = _setStreamType<dynamic>(
+    final _options = _setStreamType<ProductionPlanStockCheck>(
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
@@ -636,18 +636,24 @@ class _ProductionPlansApi implements ProductionPlansApi {
           )
           .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
     );
-    final _result = await _dio.fetch(_options);
-    final _value = _result.data;
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late ProductionPlanStockCheck _value;
+    try {
+      _value = ProductionPlanStockCheck.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
     return _value;
   }
 
   @override
-  Future<dynamic> checkManagerPlanStock(int id) async {
+  Future<ProductionPlanStockCheck> checkManagerPlanStock(int id) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
     final _headers = <String, dynamic>{};
     const Map<String, dynamic>? _data = null;
-    final _options = _setStreamType<dynamic>(
+    final _options = _setStreamType<ProductionPlanStockCheck>(
       Options(method: 'POST', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
@@ -657,8 +663,14 @@ class _ProductionPlansApi implements ProductionPlansApi {
           )
           .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
     );
-    final _result = await _dio.fetch(_options);
-    final _value = _result.data;
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late ProductionPlanStockCheck _value;
+    try {
+      _value = ProductionPlanStockCheck.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
     return _value;
   }
 

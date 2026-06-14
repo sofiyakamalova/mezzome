@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/network/api_client.dart';
 import 'package:mezzome/features/dashboard/data/api/dashboard_api.dart';
+import 'package:mezzome/features/dashboard/data/models/expenses_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/financial_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
 
@@ -23,6 +25,23 @@ class DashboardRepository {
       'moneyHidden=${data.moneyHidden}',
     );
     return data;
+  }
+
+  /// Главный финансовый дашборд («Обзор») за период.
+  Future<FinancialDashboard> fetchFinancialDashboard({
+    required String period,
+    required String date,
+  }) async {
+    return _api.getFinancialDashboard(period: period, date: date);
+  }
+
+  /// Расходы за период (`day`/`week`/`month`/`year`) на опорную дату [date]
+  /// (`YYYY-MM-DD`). Только расход, без выручки.
+  Future<ExpensesDashboardModel> fetchExpenses({
+    required String period,
+    required String date,
+  }) async {
+    return _api.getExpenses(period: period, date: date);
   }
 
   /// Вспомогательные репорты дашборда. Каждый грузится best-effort: при ошибке

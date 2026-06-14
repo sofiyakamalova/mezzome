@@ -2,6 +2,14 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'manager_reports_model.g.dart';
 
+/// Бэкенд (Django `DecimalField`) присылает денежные поля строкой
+/// (`"2798.0000"`), а не числом — парсим лояльно к обоим вариантам.
+double _toDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0;
+  return 0;
+}
+
 /// План vs факт по дням (`GET /manager/reports/plan-vs-fact`).
 @JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
 class ManagerPlanVsFactReport {
@@ -68,8 +76,10 @@ class ManagerCostPerHeadItem {
   });
 
   final String? serviceDate;
+  @JsonKey(fromJson: _toDouble)
   final double actualFoodCost;
   final int mealsServed;
+  @JsonKey(fromJson: _toDouble)
   final double costPerHead;
 
   factory ManagerCostPerHeadItem.fromJson(Map<String, dynamic> json) =>
@@ -107,8 +117,10 @@ class ManagerVarianceItem {
   });
 
   final String? category;
+  @JsonKey(fromJson: _toDouble)
   final double costImpact;
   final int count;
+  @JsonKey(fromJson: _toDouble)
   final double lossQty;
 
   factory ManagerVarianceItem.fromJson(Map<String, dynamic> json) =>

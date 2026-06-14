@@ -27,13 +27,6 @@ String formatMoney(double? value) {
   return '${value.toStringAsFixed(0)} ₸';
 }
 
-String formatPercent(double? value) {
-  if (value == null) {
-    return 'notAvailable'.tr();
-  }
-  return '${value.toStringAsFixed(1)}%';
-}
-
 class DishListTile extends StatelessWidget {
   const DishListTile({
     super.key,
@@ -60,7 +53,6 @@ class DishListTile extends StatelessWidget {
                 'costPerPortion'.tr(
                   namedArgs: {
                     'cost': formatMoney(dish.costPerPortion),
-                    'foodCost': formatPercent(dish.foodCostPct),
                   },
                 ),
               )

@@ -2,6 +2,14 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'manager_dashboard_model.g.dart';
 
+/// Бэкенд (Django `DecimalField`) присылает денежные поля строкой
+/// (`"2798.0000"`), а не числом — парсим лояльно к обоим вариантам.
+double _toDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value) ?? 0;
+  return 0;
+}
+
 /// Дашборд менеджера (`GET /manager/reports/dashboard`).
 ///
 /// Операционные KPI: активные контракты, условно утверждённые планы и открытые
@@ -30,6 +38,7 @@ class ManagerDashboardModel {
   final int openChefEscalations;
 
   /// Денежное влияние отклонений план/факт. Может быть скрыто по RBAC.
+  @JsonKey(fromJson: _toDouble)
   final double varianceCostImpact;
 
   /// Бэкенд скрыл денежные показатели для этой роли.

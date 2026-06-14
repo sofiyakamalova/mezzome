@@ -2,6 +2,20 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'production_plan_model.g.dart';
 
+/// Лояльный парсинг чисел: бэкенд (Django `DecimalField`) иногда присылает
+/// деньги/количества строкой (`"2798.0000"`), а не числом.
+double _d(Object? v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v) ?? 0;
+  return 0;
+}
+
+double? _dn(Object? v) {
+  if (v is num) return v.toDouble();
+  if (v is String) return double.tryParse(v);
+  return null;
+}
+
 @JsonSerializable(fieldRename: FieldRename.snake)
 class ProductionPlanListResponse {
   const ProductionPlanListResponse({
@@ -42,6 +56,9 @@ class ProductionPlanListItem {
   Map<String, dynamic> toJson() => _$ProductionPlanListItemToJson(this);
 }
 
+/// Ответ создания/чтения плана (`dto.ProductionPlanResponse`). Разбираем все
+/// нужные поля, чтобы «что получаем» не терялось: статус, кухня, число едоков,
+/// резерв, заметки и позиции со слотами/себестоимостью/наличием на складе.
 @JsonSerializable(fieldRename: FieldRename.snake)
 class ProductionPlanDetail {
   const ProductionPlanDetail({
@@ -49,6 +66,11 @@ class ProductionPlanDetail {
     this.serviceType,
     this.status,
     this.plannedDate,
+    this.kitchenId,
+    this.peopleCount,
+    this.reserveCoefficient,
+    this.notes,
+    this.createdAt,
     this.items = const [],
   });
 
@@ -56,7 +78,22 @@ class ProductionPlanDetail {
   final String? serviceType;
   final String? status;
   final String? plannedDate;
+  final int? kitchenId;
+  final int? peopleCount;
+
+  @JsonKey(fromJson: _dn)
+  final double? reserveCoefficient;
+  final String? notes;
+  final String? createdAt;
   final List<ProductionPlanItem> items;
+
+  /// Суммарная себестоимость плана (Σ по позициям).
+  double get totalCost =>
+      items.fold(0, (sum, item) => sum + item.theoreticalCost);
+
+  /// Суммарные плановые порции.
+  int get totalPortions =>
+      items.fold(0, (sum, item) => sum + item.plannedPortions);
 
   factory ProductionPlanDetail.fromJson(Map<String, dynamic> json) =>
       _$ProductionPlanDetailFromJson(json);
@@ -69,23 +106,90 @@ class ProductionPlanItem {
   const ProductionPlanItem({
     required this.id,
     required this.menuItemId,
+    this.planId,
     this.plannedPortions = 0,
     this.theoreticalCost = 0,
     this.technicalCardId,
+    this.slotKey,
+    this.slotTitle,
+    this.sortOrder,
+    this.stockAvailable,
   });
 
   final int id;
   final int menuItemId;
+  final int? planId;
   final int plannedPortions;
+
+  @JsonKey(fromJson: _d)
   final double theoreticalCost;
 
   /// Техкарта позиции (`technical_card_id`), если бэкенд её отдаёт.
   final int? technicalCardId;
 
+  /// Слот строки меню (категория): ключ/название/порядок.
+  final String? slotKey;
+  final String? slotTitle;
+  final int? sortOrder;
+
+  /// Хватает ли остатков на складе под эту позицию (из ответа create/detail).
+  final bool? stockAvailable;
+
   factory ProductionPlanItem.fromJson(Map<String, dynamic> json) =>
       _$ProductionPlanItemFromJson(json);
 
   Map<String, dynamic> toJson() => _$ProductionPlanItemToJson(this);
+}
+
+/// Результат проверки остатков (`dto.ProductionPlanStockCheckResponse`).
+@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+class ProductionPlanStockCheck {
+  const ProductionPlanStockCheck({
+    this.canFulfill = false,
+    this.totalCost = 0,
+    this.shortages = const [],
+    this.warnings = const [],
+  });
+
+  final bool canFulfill;
+
+  @JsonKey(fromJson: _d)
+  final double totalCost;
+
+  final List<ProductionPlanStockShortage> shortages;
+  final List<String> warnings;
+
+  factory ProductionPlanStockCheck.fromJson(Map<String, dynamic> json) =>
+      _$ProductionPlanStockCheckFromJson(json);
+}
+
+@JsonSerializable(fieldRename: FieldRename.snake, createToJson: false)
+class ProductionPlanStockShortage {
+  const ProductionPlanStockShortage({
+    this.ingredient,
+    this.ingredientId,
+    this.requiredQty = 0,
+    this.availableQty = 0,
+    this.deficitQty = 0,
+    this.unit,
+  });
+
+  final String? ingredient;
+  final int? ingredientId;
+
+  @JsonKey(fromJson: _d)
+  final double requiredQty;
+
+  @JsonKey(fromJson: _d)
+  final double availableQty;
+
+  @JsonKey(fromJson: _d)
+  final double deficitQty;
+
+  final String? unit;
+
+  factory ProductionPlanStockShortage.fromJson(Map<String, dynamic> json) =>
+      _$ProductionPlanStockShortageFromJson(json);
 }
 
 /// Тело `PATCH /chef/production-plan-items/{plan_item_id}` — меняет только

@@ -19,10 +19,7 @@ class ProductionGridNotifier extends Notifier<ProductionGridState> {
   @override
   ProductionGridState build() {
     return ProductionGridState(
-      //weekStart: DateFormatUtil.startOfWeek(DateFormatUtil.today)
-      // ВРЕМЕННО: стартуем на неделе 1–7 июня 2026, где сейчас есть данные.
-      // TODO: вернуть `DateFormatUtil.startOfWeek(DateFormatUtil.today)`.
-      weekStart: DateFormatUtil.startOfWeek(DateTime(2026, 6, 3)),
+      weekStart: DateFormatUtil.startOfWeek(DateFormatUtil.today),
     );
   }
 

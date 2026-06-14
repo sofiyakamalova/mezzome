@@ -221,8 +221,7 @@ class _Derived {
     : basePortions = card.basePortions <= 0 ? 1 : card.basePortions,
       outputPerPortion = card.outputPerPortion,
       outputUnit = card.outputUnit,
-      costPerPortion = _resolveCostPerPortion(card, dish),
-      sellingPrice = dish?.price {
+      costPerPortion = _resolveCostPerPortion(card, dish) {
     nettoPerPortion = card.ingredients.fold(0, (s, i) => s + i.netto);
     bruttoPerPortion = card.ingredients.fold(0, (s, i) => s + i.brutto);
   }
@@ -233,7 +232,6 @@ class _Derived {
 
   /// Себестоимость **порции** в ₸ (Σ нетто×цена). НЕ `food_cost` (тот — процент).
   final double costPerPortion;
-  final double? sellingPrice;
   double nettoPerPortion = 0;
   double bruttoPerPortion = 0;
 
@@ -244,18 +242,6 @@ class _Derived {
   double get massDiff => nettoTotal - yieldTotal;
   double get massDiffPct => yieldTotal > 0 ? massDiff / yieldTotal * 100 : 0;
   bool get massInNorm => massDiffPct.abs() <= 5;
-
-  double? get foodCostPct {
-    final p = sellingPrice;
-    if (p == null || p <= 0) return null;
-    return costPerPortion / p * 100;
-  }
-
-  double? get margin {
-    final p = sellingPrice;
-    if (p == null || p <= 0) return null;
-    return p - costPerPortion;
-  }
 
   /// Себестоимость порции: приоритет — серверный `cost_per_portion` блюда,
   /// иначе Σ построчных стоимостей (таблица «на 1 порцию»), иначе
@@ -864,38 +850,13 @@ class _KpiSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = derived;
-    final pct = d.foodCostPct;
-    final foodCostColor = pct == null
-        ? null
-        : (pct <= 40
-              ? AppColors.profitGreen
-              : (pct <= 55 ? AppColors.warningAmber : AppColors.dangerRed));
+    // Показываем только себестоимость порции и выход — без цены продажи,
+    // фудкоста и маржи (по требованию заказчика: «только себестоимость»).
     final cards = <Widget>[
       _KpiCard(
         label: 'tcpKpiCost'.tr(),
         value: '${d.costPerPortion.toStringAsFixed(2)} ₸',
         icon: Icons.payments_outlined,
-      ),
-      _KpiCard(
-        label: 'tcpKpiPrice'.tr(),
-        value: d.sellingPrice == null
-            ? '—'
-            : '${d.sellingPrice!.toStringAsFixed(0)} ₸',
-        icon: Icons.sell_outlined,
-      ),
-      _KpiCard(
-        label: 'tcpKpiFoodcost'.tr(),
-        value: pct == null ? '—' : '${pct.toStringAsFixed(1)} %',
-        valueColor: foodCostColor,
-        icon: Icons.pie_chart_outline,
-      ),
-      _KpiCard(
-        label: 'tcpKpiMargin'.tr(),
-        value: d.margin == null ? '—' : '${d.margin!.toStringAsFixed(0)} ₸',
-        valueColor: d.margin == null
-            ? null
-            : (d.margin! >= 0 ? AppColors.profitGreen : AppColors.dangerRed),
-        icon: Icons.trending_up,
       ),
       _KpiCard(
         label: 'tcpKpiYield'.tr(),
@@ -934,14 +895,12 @@ class _KpiCard extends StatelessWidget {
     required this.label,
     required this.value,
     this.sub,
-    this.valueColor,
     this.icon,
   });
 
   final String label;
   final String value;
   final String? sub;
-  final Color? valueColor;
   final IconData? icon;
 
   @override
@@ -985,7 +944,6 @@ class _KpiCard extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.w700,
-              color: valueColor,
             ),
           ),
           if (sub != null) ...[

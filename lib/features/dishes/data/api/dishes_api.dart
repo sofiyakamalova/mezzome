@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:mezzome/features/dishes/data/models/dish_model.dart';
+import 'package:mezzome/features/dishes/data/models/menu_category_model.dart';
 import 'package:retrofit/retrofit.dart';
 
 part 'dishes_api.g.dart';
@@ -14,4 +15,8 @@ abstract class DishesApi {
 
   @GET('/common/menu/items')
   Future<DishListResponse> getCommonMenuItems();
+
+  /// Категории меню — источник слотов при составлении плана.
+  @GET('/common/menu/categories')
+  Future<MenuCategoryListResponse> getCommonMenuCategories();
 }
