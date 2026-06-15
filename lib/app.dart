@@ -12,7 +12,7 @@ class MezzomeApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeMode =
-        ref.watch(themeModeProvider).valueOrNull ?? ThemeMode.dark;
+        ref.watch(themeModeProvider).valueOrNull ?? ThemeMode.light;
 
     return MaterialApp.router(
       title: 'appTitle'.tr(),

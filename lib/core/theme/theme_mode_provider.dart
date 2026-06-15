@@ -19,9 +19,10 @@ class ThemeModeNotifier extends AsyncNotifier<ThemeMode> {
     appLogger.i('Theme mode → ${_toStorage(mode)}');
   }
 
+  // По умолчанию (нет сохранённого выбора) — светлая тема.
   static ThemeMode _fromStorage(String? value) => switch (value) {
-        'light' => ThemeMode.light,
-        _ => ThemeMode.dark,
+        'dark' => ThemeMode.dark,
+        _ => ThemeMode.light,
       };
 
   static String _toStorage(ThemeMode mode) => switch (mode) {
