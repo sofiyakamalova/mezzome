@@ -389,7 +389,8 @@ class _PlanVsFactReportSection extends StatelessWidget {
   }
 }
 
-/// Себестоимость на человека по дням (деньги по RBAC).
+/// Расход за день — полные затраты по дням (`actual_food_cost`), деньги по RBAC.
+/// Заказчик: важен дневной итог расходов, а не делёное на человека.
 class _CostPerHeadSection extends StatelessWidget {
   const _CostPerHeadSection({required this.report});
 
@@ -402,8 +403,8 @@ class _CostPerHeadSection extends StatelessWidget {
     final showMoney = report.showMoney;
 
     return _DashSection(
-      title: 'dashCostPerHeadTitle'.tr(),
-      icon: Icons.groups_outlined,
+      title: 'dashDayExpenseTitle'.tr(),
+      icon: Icons.payments_outlined,
       child: Column(
         children: [
           Row(
@@ -420,7 +421,7 @@ class _CostPerHeadSection extends StatelessWidget {
               Expanded(
                 flex: 3,
                 child: Text(
-                  'dashCostHead'.tr(),
+                  'dashDayExpenseCol'.tr(),
                   textAlign: TextAlign.right,
                   style: theme.textTheme.labelSmall?.copyWith(color: muted),
                 ),
@@ -448,7 +449,7 @@ class _CostPerHeadSection extends StatelessWidget {
                   Expanded(
                     flex: 3,
                     child: Text(
-                      showMoney ? _money(i.costPerHead) : '—',
+                      showMoney ? _money(i.actualFoodCost) : '—',
                       textAlign: TextAlign.right,
                       style: theme.textTheme.bodySmall
                           ?.copyWith(fontWeight: FontWeight.w600),

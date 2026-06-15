@@ -8,12 +8,17 @@
 class ExpensesDashboardModel {
   const ExpensesDashboardModel({
     this.byCategory = const {},
+    this.byBranch = const [],
     this.total = 0,
     this.availableCategories = const [],
   });
 
   /// Сумма расходов по категориям: `category -> amount`.
   final Map<String, double> byCategory;
+
+  /// Расходы по филиалам с разбивкой по категориям (гайд §8). Нужны для
+  /// построчной расшифровки расходов в карточке объекта.
+  final List<ExpensesByBranch> byBranch;
 
   /// Общая сумма расходов за период.
   final double total;
@@ -22,13 +27,15 @@ class ExpensesDashboardModel {
   final List<String> availableCategories;
 
   factory ExpensesDashboardModel.fromJson(Map<String, dynamic> json) {
-    final byCategory = <String, double>{};
-    final raw = json['by_category'];
-    if (raw is Map) {
-      raw.forEach((key, value) {
-        byCategory[key.toString()] = _toDouble(value);
-      });
-    }
+    final byCategory = _parseCategoryMap(json['by_category']);
+
+    final rawByBranch = json['by_branch'];
+    final byBranch = rawByBranch is List
+        ? rawByBranch
+              .whereType<Map>()
+              .map((e) => ExpensesByBranch.fromJson(e.cast<String, dynamic>()))
+              .toList()
+        : const <ExpensesByBranch>[];
 
     final categories =
         (json['available_categories'] as List<dynamic>?)
@@ -38,10 +45,49 @@ class ExpensesDashboardModel {
 
     return ExpensesDashboardModel(
       byCategory: byCategory,
+      byBranch: byBranch,
       total: _toDouble(json['total']),
       availableCategories: categories,
     );
   }
+}
+
+/// Расходы одного филиала с разбивкой по категориям (`by_branch[]`).
+class ExpensesByBranch {
+  const ExpensesByBranch({
+    required this.branchId,
+    this.byCategory = const {},
+    this.total = 0,
+  });
+
+  final int branchId;
+  final Map<String, double> byCategory;
+  final double total;
+
+  factory ExpensesByBranch.fromJson(Map<String, dynamic> json) {
+    return ExpensesByBranch(
+      branchId: _toInt(json['branch_id']),
+      byCategory: _parseCategoryMap(json['by_category']),
+      total: _toDouble(json['total']),
+    );
+  }
+}
+
+Map<String, double> _parseCategoryMap(Object? raw) {
+  final map = <String, double>{};
+  if (raw is Map) {
+    raw.forEach((key, value) {
+      map[key.toString()] = _toDouble(value);
+    });
+  }
+  return map;
+}
+
+int _toInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? 0;
+  return 0;
 }
 
 double _toDouble(Object? value) {

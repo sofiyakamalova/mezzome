@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/network/api_client.dart';
 import 'package:mezzome/features/dashboard/data/api/dashboard_api.dart';
+import 'package:mezzome/features/dashboard/data/models/branch_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/expenses_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/financial_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
+import 'package:mezzome/features/dashboard/data/models/nutrition_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/warehouse_dashboard_model.dart';
 
 class DashboardRepository {
   DashboardRepository(this._api);
@@ -35,6 +38,14 @@ class DashboardRepository {
     return _api.getFinancialDashboard(period: period, date: date);
   }
 
+  /// P&L по филиалам/площадкам («объекты») за период (гайд §7).
+  Future<BranchDashboard> fetchBranches({
+    required String period,
+    required String date,
+  }) async {
+    return _api.getBranches(period: period, date: date);
+  }
+
   /// Расходы за период (`day`/`week`/`month`/`year`) на опорную дату [date]
   /// (`YYYY-MM-DD`). Только расход, без выручки.
   Future<ExpensesDashboardModel> fetchExpenses({
@@ -58,6 +69,29 @@ class DashboardRepository {
       return null;
     }
   }
+
+  /// «Сводная по питанию» (§20) за диапазон [from]/[to] (включительно).
+  /// best-effort: при 403/404/ошибке → null (раздел покажет «недоступно»).
+  Future<NutritionDashboard?> fetchNutrition({
+    required String from,
+    required String to,
+  }) =>
+      _tryFetch(() => _api.getNutrition(from: from, to: to), 'nutrition');
+
+  /// Складской дашборд за период (гайд §9). best-effort: при ошибке → null.
+  Future<WarehouseDashboard?> fetchWarehouse({
+    required String period,
+    required String date,
+    String? mealPeriod,
+  }) =>
+      _tryFetch(
+        () => _api.getWarehouse(
+          period: period,
+          date: date,
+          mealPeriod: mealPeriod,
+        ),
+        'warehouse',
+      );
 
   Future<ManagerPlanVsFactReport?> fetchPlanVsFact() =>
       _tryFetch(_api.getPlanVsFact, 'plan-vs-fact');

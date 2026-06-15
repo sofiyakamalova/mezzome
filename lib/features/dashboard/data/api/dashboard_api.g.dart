@@ -80,6 +80,62 @@ class _DashboardApi implements DashboardApi {
   }
 
   @override
+  Future<BranchDashboard> getBranches({String? period, String? date}) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{r'period': period, r'date': date};
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{};
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<BranchDashboard>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/dashboard/branches',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BranchDashboard _value;
+    try {
+      _value = BranchDashboard.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
+  Future<NutritionDashboard> getNutrition({String? from, String? to}) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{r'from': from, r'to': to};
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{};
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<NutritionDashboard>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/dashboard/nutrition',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late NutritionDashboard _value;
+    try {
+      _value = NutritionDashboard.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<ExpensesDashboardModel> getExpenses({
     String? period,
     String? date,
@@ -103,6 +159,42 @@ class _DashboardApi implements DashboardApi {
     late ExpensesDashboardModel _value;
     try {
       _value = ExpensesDashboardModel.fromJson(_result.data!);
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
+  Future<WarehouseDashboard> getWarehouse({
+    String? period,
+    String? date,
+    String? mealPeriod,
+  }) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{
+      r'period': period,
+      r'date': date,
+      r'meal_period': mealPeriod,
+    };
+    queryParameters.removeWhere((k, v) => v == null);
+    final _headers = <String, dynamic>{};
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<WarehouseDashboard>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            '/dashboard/warehouse',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late WarehouseDashboard _value;
+    try {
+      _value = WarehouseDashboard.fromJson(_result.data!);
     } on Object catch (e, s) {
       errorLogger?.logError(e, s, _options);
       rethrow;

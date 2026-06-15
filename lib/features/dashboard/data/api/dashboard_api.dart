@@ -1,8 +1,11 @@
 import 'package:dio/dio.dart';
+import 'package:mezzome/features/dashboard/data/models/branch_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/expenses_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/financial_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
+import 'package:mezzome/features/dashboard/data/models/nutrition_dashboard_model.dart';
+import 'package:mezzome/features/dashboard/data/models/warehouse_dashboard_model.dart';
 import 'package:retrofit/retrofit.dart';
 
 part 'dashboard_api.g.dart';
@@ -28,12 +31,39 @@ abstract class DashboardApi {
     @Query('date') String? date,
   });
 
+  /// P&L по филиалам/площадкам (объекты «Catering 1/2/3», §7 гайда):
+  /// выручка, себестоимость, прибыль и OPEX по каждому филиалу + `totals`
+  /// с нераспределённым OPEX. [period] — `day`/`week`/`month`/`year`.
+  @GET('/dashboard/branches')
+  Future<BranchDashboard> getBranches({
+    @Query('period') String? period,
+    @Query('date') String? date,
+  });
+
+  /// «Сводная по питанию» (§20 гайда): затраты по приёмам, состав, СРМ, статус,
+  /// прогноз, инсайты. Диапазон [from]/[to] (`YYYY-MM-DD`, включительно).
+  @GET('/dashboard/nutrition')
+  Future<NutritionDashboard> getNutrition({
+    @Query('from') String? from,
+    @Query('to') String? to,
+  });
+
   /// Дашборд расходов: суммы по категориям и итог за период (§8 гайда).
   /// Только расход, без выручки. [period] — `day`/`week`/`month`/`year`.
   @GET('/dashboard/expenses')
   Future<ExpensesDashboardModel> getExpenses({
     @Query('period') String? period,
     @Query('date') String? date,
+  });
+
+  /// Складской финансовый дашборд (§9 гайда): закупки, потребление, остатки,
+  /// low-stock, бюджет vs факт, стоимость питания по дням.
+  /// [mealPeriod] — `breakfast`/`lunch`/`dinner`.
+  @GET('/dashboard/warehouse')
+  Future<WarehouseDashboard> getWarehouse({
+    @Query('period') String? period,
+    @Query('date') String? date,
+    @Query('meal_period') String? mealPeriod,
   });
 
   /// План vs факт по дням.
