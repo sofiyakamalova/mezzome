@@ -1,99 +1,58 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
-import 'package:mezzome/core/logging/app_logger.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/features/approvals/domain/models/my_request_filter.dart';
+import 'package:mezzome/features/approvals/presentation/blocs/my_requests_bloc.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/data/models/technical_card_model.dart';
-import 'package:mezzome/features/dishes/data/repository/menu_dashboard_repository.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/providers/menu_dashboard_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_sheet.dart';
 
 /// «Мои запросы на изменение» (роль chef): техкарты, отправленные на
 /// согласование. Данные — `GET /chef/technical-cards?status=...`.
-class MyRequestsScreen extends ConsumerStatefulWidget {
+class MyRequestsScreen extends StatefulWidget {
   const MyRequestsScreen({super.key});
 
   @override
-  ConsumerState<MyRequestsScreen> createState() => _MyRequestsScreenState();
+  State<MyRequestsScreen> createState() => _MyRequestsScreenState();
 }
 
-enum _Filter {
-  pending,
-  rejected,
-  approved;
-
+/// UI-подписи/иконки для вкладок фильтра (модель — в domain).
+extension _MyRequestFilterUi on MyRequestFilter {
   String get label => switch (this) {
-        _Filter.pending => 'На согл.',
-        _Filter.rejected => 'Отклон.',
-        _Filter.approved => 'Утвержд.',
+        MyRequestFilter.pending => 'На согл.',
+        MyRequestFilter.rejected => 'Отклон.',
+        MyRequestFilter.approved => 'Утвержд.',
       };
 
   IconData get icon => switch (this) {
-        _Filter.pending => Icons.hourglass_empty_rounded,
-        _Filter.rejected => Icons.close_rounded,
-        _Filter.approved => Icons.check_rounded,
+        MyRequestFilter.pending => Icons.hourglass_empty_rounded,
+        MyRequestFilter.rejected => Icons.close_rounded,
+        MyRequestFilter.approved => Icons.check_rounded,
       };
 }
 
-class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
-  _Filter _filter = _Filter.pending;
-  bool _loading = true;
-  String? _error;
-  List<TechnicalCardModel> _cards = const [];
+class _MyRequestsScreenState extends State<MyRequestsScreen> {
+  late final MyRequestsBloc _bloc =
+      sl<MyRequestsBloc>()..add(const MyRequestsRequested());
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-  }
-
-  String get _statusValue => switch (_filter) {
-        // Сервер хранит статус ожидающей версии как `pending_approval`.
-        _Filter.pending => 'pending_approval',
-        _Filter.rejected => 'rejected',
-        _Filter.approved => 'approved',
-      };
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final api = ref.read(technicalCardsApiProvider);
-      final res = await api.listTechnicalCards(
-        status: _statusValue,
-        includeAllVersions: true,
-      );
-      appLogger.i(
-        'My requests (status=$_statusValue): ${res.cards.length} cards',
-      );
-      if (!mounted) return;
-      setState(() {
-        _cards = res.cards;
-        _loading = false;
-      });
-    } on DioException catch (e) {
-      appLogger.w('My requests load failed: ${e.response?.statusCode}');
-      if (!mounted) return;
-      setState(() {
-        _error = 'HTTP ${e.response?.statusCode}';
-        _loading = false;
-      });
-    }
+  void dispose() {
+    _bloc.close();
+    super.dispose();
   }
 
   /// Тап по запросу → открыть техкарту по её id (просмотр/правка).
   Future<void> _openCard(TechnicalCardModel card) async {
-    final notifier = ref.read(menuDashboardNotifierProvider.notifier);
-    final session = ref.read(authSessionProvider).valueOrNull;
+    final notifier = sl<MenuDashboardCubit>();
+    final session = sl<AuthSessionCubit>().state.user;
     final role = session?.role;
     final showFinancials = role != null && canSeeFinancials(role);
     final signature =
@@ -111,7 +70,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
 
     await notifier.selectCell(cell, requestContext: true);
     if (!mounted) return;
-    if (ref.read(menuDashboardNotifierProvider).editorDraft == null) {
+    if (notifier.state.editorDraft == null) {
       return;
     }
     await TechCardEditorSheet.show(
@@ -120,7 +79,7 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
       showFinancials: showFinancials,
     );
     notifier.closeEditor();
-    await _load();
+    _bloc.add(const MyRequestsRefreshed());
   }
 
   @override
@@ -132,43 +91,45 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
           IconButton(
             tooltip: 'Обновить',
             icon: const Icon(Icons.refresh),
-            onPressed: _load,
+            onPressed: () => _bloc.add(const MyRequestsRefreshed()),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _FilterTabs(
-            selected: _filter,
-            onSelected: (f) {
-              if (f == _filter) return;
-              setState(() => _filter = f);
-              _load();
-            },
-          ),
-          Expanded(
-            child: RefreshIndicator(
-              color: ThemePalette.accent(context),
-              onRefresh: _load,
-              child: _buildList(context),
-            ),
-          ),
-        ],
+      body: BlocBuilder<MyRequestsBloc, MyRequestsState>(
+        bloc: _bloc,
+        builder: (context, state) {
+          return Column(
+            children: [
+              _FilterTabs(
+                selected: state.filter,
+                onSelected: (f) => _bloc.add(MyRequestsFilterChanged(f)),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  color: ThemePalette.accent(context),
+                  onRefresh: () async =>
+                      _bloc.add(const MyRequestsRefreshed()),
+                  child: _buildList(context, state),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildList(BuildContext context) {
-    if (_loading) {
+  Widget _buildList(BuildContext context, MyRequestsState state) {
+    if (state.status == MyRequestsStatus.loading && state.cards.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (state.status == MyRequestsStatus.failure && state.cards.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
-        children: [Center(child: Text(_error!))],
+        children: [Center(child: Text(state.error ?? 'Ошибка загрузки'))],
       );
     }
-    if (_cards.isEmpty) {
+    if (state.cards.isEmpty) {
       return ListView(
         children: [
           Padding(
@@ -185,10 +146,10 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
     }
     return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.sm),
-      itemCount: _cards.length,
+      itemCount: state.cards.length,
       itemBuilder: (_, i) => _RequestCard(
-        card: _cards[i],
-        onTap: () => _openCard(_cards[i]),
+        card: state.cards[i],
+        onTap: () => _openCard(state.cards[i]),
       ),
     );
   }
@@ -199,8 +160,8 @@ class _MyRequestsScreenState extends ConsumerState<MyRequestsScreen> {
 class _FilterTabs extends StatelessWidget {
   const _FilterTabs({required this.selected, required this.onSelected});
 
-  final _Filter selected;
-  final ValueChanged<_Filter> onSelected;
+  final MyRequestFilter selected;
+  final ValueChanged<MyRequestFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +183,7 @@ class _FilterTabs extends StatelessWidget {
         ),
         child: Row(
           children: [
-            for (final filter in _Filter.values)
+            for (final filter in MyRequestFilter.values)
               Expanded(
                 child: _FilterTab(
                   filter: filter,
@@ -244,7 +205,7 @@ class _FilterTab extends StatelessWidget {
     required this.onTap,
   });
 
-  final _Filter filter;
+  final MyRequestFilter filter;
   final bool isActive;
   final VoidCallback onTap;
 

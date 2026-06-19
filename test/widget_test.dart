@@ -1,32 +1,79 @@
-import 'package:flutter/widgets.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:bloc_test/bloc_test.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mezzome/app.dart';
+import 'package:mezzome/core/di/locator.dart';
+import 'package:mezzome/core/di/session_holder.dart';
 import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/data/models/user_model.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/dashboard_notifier.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/dashboard_state.dart';
-import 'package:mezzome/features/dishes/presentation/providers/dishes_notifier.dart';
-import 'package:mezzome/features/dishes/presentation/providers/dishes_state.dart';
+import 'package:mezzome/features/dashboard/presentation/blocs/dashboard_bloc.dart';
 
 import 'test_helpers.dart';
 
+const _managerUser = UserModel(
+  id: 1,
+  name: 'Director',
+  phone: '+77001234567',
+  role: UserRole.manager,
+);
+
+/// Сессия без сети: всегда авторизованный менеджер.
+class _FakeAuthSessionCubit extends Cubit<AuthSessionState>
+    implements AuthSessionCubit {
+  _FakeAuthSessionCubit()
+      : super(const AuthSessionState(AuthStatus.authenticated, _managerUser));
+
+  @override
+  Future<void> restore() async {}
+  @override
+  Future<void> refresh() async {}
+  @override
+  Future<void> logout() async {}
+}
+
+class _MockDashboardBloc extends MockBloc<DashboardEvent, DashboardState>
+    implements DashboardBloc {}
+
 void main() {
+  setUp(() async {
+    await sl.reset();
+    await configureDependencies();
+
+    // Сессия → менеджер (без сети).
+    sl.unregister<AuthSessionCubit>();
+    sl.registerLazySingleton<AuthSessionCubit>(_FakeAuthSessionCubit.new);
+    sl<SessionHolder>().user = _managerUser;
+
+    // Дашборд → засеянный bloc (без сети).
+    sl.unregister<DashboardBloc>();
+    sl.registerFactory<DashboardBloc>(() {
+      final bloc = _MockDashboardBloc();
+      whenListen(
+        bloc,
+        const Stream<DashboardState>.empty(),
+        initialState: const DashboardState(
+          status: DashboardStatus.success,
+          data: ManagerDashboardModel(
+            activeContracts: 3,
+            conditionalPlans: 1,
+            openChefEscalations: 2,
+            varianceCostImpact: 1500,
+          ),
+        ),
+      );
+      return bloc;
+    });
+  });
+
+  tearDown(() async => sl.reset());
+
   testWidgets('opens manager dashboard when manager session exists',
       (WidgetTester tester) async {
     await tester.pumpWidget(
       wrapWithLocalization(
-        ProviderScope(
-          key: UniqueKey(),
-          overrides: [
-            authSessionProvider.overrideWith(_TestAuthSessionNotifier.new),
-            dashboardNotifierProvider.overrideWith(_TestDashboardNotifier.new),
-            dishesNotifierProvider.overrideWith(_TestDishesNotifier.new),
-          ],
-          child: const MezzomeApp(),
-        ),
+        const MezzomeApp(),
       ),
     );
     await tester.pumpAndSettle();
@@ -35,37 +82,4 @@ void main() {
     expect(find.textContaining('Эскалации шефа'), findsOneWidget);
     expect(find.textContaining('Активные контракты'), findsOneWidget);
   });
-}
-
-class _TestAuthSessionNotifier extends AuthSessionNotifier {
-  @override
-  Future<UserModel?> build() async {
-    return const UserModel(
-      id: 1,
-      name: 'Director',
-      phone: '+77001234567',
-      role: UserRole.manager,
-    );
-  }
-}
-
-class _TestDashboardNotifier extends DashboardNotifier {
-  @override
-  Future<DashboardState> build() async {
-    return const DashboardState(
-      data: ManagerDashboardModel(
-        activeContracts: 3,
-        conditionalPlans: 1,
-        openChefEscalations: 2,
-        varianceCostImpact: 1500,
-      ),
-    );
-  }
-}
-
-class _TestDishesNotifier extends DishesNotifier {
-  @override
-  Future<DishesState> build() async {
-    return DishesState(selectedDate: DateTime(2026, 6, 3));
-  }
 }

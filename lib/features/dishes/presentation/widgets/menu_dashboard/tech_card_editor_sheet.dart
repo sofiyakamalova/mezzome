@@ -1,13 +1,14 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
+import 'package:mezzome/core/di/session_holder.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/domain/user_role.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_draft.dart';
-import 'package:mezzome/features/dishes/presentation/providers/menu_dashboard_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_panel.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_history_sheet.dart';
 
@@ -57,21 +58,19 @@ class TechCardEditorSheet extends StatelessWidget {
           ),
           child: SizedBox(
             height: sheetHeight,
-            child: Consumer(
-              builder: (context, ref, _) {
-                final dashboard = ref.watch(menuDashboardNotifierProvider);
+            child: BlocBuilder<MenuDashboardCubit, MenuDashboardState>(
+              bloc: sl<MenuDashboardCubit>(),
+              builder: (context, dashboard) {
                 final draft = dashboard.editorDraft;
                 if (draft == null) {
                   return const SizedBox.shrink();
                 }
 
-                final notifier =
-                    ref.read(menuDashboardNotifierProvider.notifier);
+                final notifier = sl<MenuDashboardCubit>();
 
                 // Шеф подтверждает правки техкарты сам (save + self-approve),
                 // без отправки на согласование.
-                final isChef = ref.watch(authSessionProvider).valueOrNull?.role ==
-                    UserRole.chef;
+                final isChef = sl<SessionHolder>().role == UserRole.chef;
 
                 return TechCardEditorSheet(
                   draft: draft,

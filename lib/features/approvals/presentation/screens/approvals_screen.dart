@@ -1,197 +1,73 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/widgets/app_flushbar.dart';
-import 'package:mezzome/core/logging/app_logger.dart';
-import 'package:mezzome/core/network/dio_error_utils.dart';
-import 'package:mezzome/core/network/dio_provider.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/features/approvals/domain/models/approval_item.dart';
+import 'package:mezzome/features/approvals/presentation/blocs/approvals_bloc.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/providers/menu_dashboard_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_sheet.dart';
 
 /// Фильтр очереди согласований.
-enum _ApprovalFilter {
-  pending,
-  approved,
-  rejected;
-
+/// UI-подписи/иконки для вкладок-фильтров (модель — в domain).
+extension ApprovalFilterUi on ApprovalFilter {
   String get label => switch (this) {
-        _ApprovalFilter.pending => 'На согл.',
-        _ApprovalFilter.approved => 'Утверждённые',
-        _ApprovalFilter.rejected => 'Отклонённые',
+        ApprovalFilter.pending => 'На согл.',
+        ApprovalFilter.approved => 'Утверждённые',
+        ApprovalFilter.rejected => 'Отклонённые',
       };
 
   IconData get icon => switch (this) {
-        _ApprovalFilter.pending => Icons.hourglass_empty_rounded,
-        _ApprovalFilter.approved => Icons.check_rounded,
-        _ApprovalFilter.rejected => Icons.close_rounded,
+        ApprovalFilter.pending => Icons.hourglass_empty_rounded,
+        ApprovalFilter.approved => Icons.check_rounded,
+        ApprovalFilter.rejected => Icons.close_rounded,
       };
-}
-
-/// Нормализованная заявка для карточки (из tk-approvals или из техкарт).
-class _ApprovalItem {
-  const _ApprovalItem({
-    this.id,
-    this.name = '—',
-    this.code = '',
-    this.version,
-    this.changeLevel,
-    this.submittedAt,
-    required this.status,
-  });
-
-  final int? id;
-  final String name;
-  final String code;
-  final int? version;
-  final String? changeLevel;
-  final DateTime? submittedAt;
-  final _ApprovalFilter status;
 }
 
 /// Очередь согласования техкарт (роль «manager»: manager/owner).
 /// На согласовании — `GET /manager/tk-approvals` + approve/reject.
 /// Утверждённые/отклонённые — `GET /chef/technical-cards?status=...`.
-class ApprovalsScreen extends ConsumerStatefulWidget {
+class ApprovalsScreen extends StatefulWidget {
   const ApprovalsScreen({super.key});
 
   @override
-  ConsumerState<ApprovalsScreen> createState() => _ApprovalsScreenState();
+  State<ApprovalsScreen> createState() => _ApprovalsScreenState();
 }
 
-class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
-  _ApprovalFilter _filter = _ApprovalFilter.pending;
-  bool _loading = true;
-  String? _error;
-  List<_ApprovalItem> _items = const [];
+class _ApprovalsScreenState extends State<ApprovalsScreen> {
+  late final ApprovalsBloc _bloc =
+      sl<ApprovalsBloc>()..add(const ApprovalsRequested());
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  void dispose() {
+    _bloc.close();
+    super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      // Один источник — очередь tk-approvals (отдаёт все статусы),
-      // раскладываем по вкладкам клиентом.
-      final all = await _loadQueue();
-      final items = all.where((i) => i.status == _filter).toList();
-      if (!mounted) return;
-      setState(() {
-        _items = items;
-        _loading = false;
-      });
-    } on DioException catch (e) {
-      final status = e.response?.statusCode;
-      appLogger.w('Approvals load (${_filter.name}) failed (HTTP $status)');
-      if (!mounted) return;
-      setState(() {
-        _error = status == 403
-            ? 'Нет доступа (FORBIDDEN).\nСогласование техкарт доступно '
-                'ролям manager / chef / owner.'
-            : 'Не удалось загрузить (HTTP $status).';
-        _loading = false;
-      });
-    }
-  }
-
-  /// Грузит очередь tk-approvals (содержит заявки во всех статусах)
-  /// и нормализует каждую в [_ApprovalItem] с её реальным статусом.
-  Future<List<_ApprovalItem>> _loadQueue() async {
-    final dio = ref.read(dioProvider);
-    final res = await dio.get<dynamic>('/manager/tk-approvals');
-    appLogger.i('GET /manager/tk-approvals → 200');
-    final data = res.data;
-    final list = (data is Map && data['items'] is List)
-        ? (data['items'] as List)
-        : (data is List ? data : const []);
-    return list
-        .whereType<Map>()
-        .map((e) => e.cast<String, dynamic>())
-        .map((m) {
-          final statusStr = '${m['approval_status'] ?? m['status'] ?? ''}'
-              .toLowerCase();
-          final status = statusStr.contains('reject')
-              ? _ApprovalFilter.rejected
-              : (statusStr.contains('approv')
-                  ? _ApprovalFilter.approved
-                  : _ApprovalFilter.pending);
-          return _ApprovalItem(
-            id: m['id'] as int?,
-            name: '${m['name'] ?? '—'}',
-            code: '${m['code'] ?? ''}',
-            version: m['version'] as int?,
-            changeLevel: m['change_level'] as String?,
-            submittedAt: DateTime.tryParse('${m['submitted_at'] ?? ''}'),
-            status: status,
-          );
-        })
-        .toList();
-  }
-
-  void _selectFilter(_ApprovalFilter filter) {
-    if (filter == _filter) return;
-    setState(() => _filter = filter);
-    _load();
-  }
-
-  /// Спрашивает причину/комментарий и затем выполняет решение.
+  /// Спрашивает причину/комментарий и затем отправляет решение в bloc.
   /// Для отклонения причина обязательна (требование бэкенда: поле `reason`).
   Future<void> _confirmDecision(Object id, {required bool approve}) async {
     final reason = await showDialog<String>(
       context: context,
       builder: (_) => _ReasonDialog(approve: approve),
     );
-    // null — пользователь отменил диалог.
-    if (reason == null) return;
-    await _decide(id, approve: approve, reason: reason);
-  }
-
-  Future<void> _decide(
-    Object id, {
-    required bool approve,
-    required String reason,
-  }) async {
-    final action = approve ? 'approve' : 'reject';
-    try {
-      final dio = ref.read(dioProvider);
-      final res = await dio.post<dynamic>(
-        '/manager/tk-approvals/$id/$action',
-        data: <String, dynamic>{'reason': reason, 'comment': reason},
-      );
-      appLogger.i('POST /manager/tk-approvals/$id/$action → ${res.statusCode}');
-      if (!mounted) return;
-      AppFlushbar.showSuccess(context, approve ? 'Утверждено' : 'Отклонено');
-      await _load();
-    } on DioException catch (e) {
-      appLogger.w('Decision $action failed: ${e.response?.data}');
-      if (!mounted) return;
-      final details = apiErrorDetails(e);
-      AppFlushbar.showError(
-        context,
-        details ?? 'Ошибка: ${e.response?.statusCode}',
-      );
-    }
+    if (reason == null) return; // отмена
+    _bloc.add(ApprovalsDecided(id: id, approve: approve, reason: reason));
   }
 
   /// Тап по заявке → открыть техкарту по её id для просмотра состава.
-  Future<void> _review(_ApprovalItem item) async {
+  Future<void> _review(ApprovalItem item) async {
     final id = item.id;
     if (id == null) return;
-    final notifier = ref.read(menuDashboardNotifierProvider.notifier);
-    final session = ref.read(authSessionProvider).valueOrNull;
+    final notifier = sl<MenuDashboardCubit>();
+    final session = sl<AuthSessionCubit>().state.user;
     final role = session?.role;
     final showFinancials = role != null && canSeeFinancials(role);
     final signature =
@@ -206,7 +82,7 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
     );
     await notifier.selectCell(cell, requestContext: true);
     if (!mounted) return;
-    if (ref.read(menuDashboardNotifierProvider).editorDraft == null) return;
+    if (notifier.state.editorDraft == null) return;
     await TechCardEditorSheet.show(
       context,
       signature: signature,
@@ -224,45 +100,69 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
           IconButton(
             tooltip: 'Обновить',
             icon: const Icon(Icons.refresh),
-            onPressed: _load,
+            onPressed: () => _bloc.add(const ApprovalsRefreshed()),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          _ApprovalTabs(selected: _filter, onSelected: _selectFilter),
-          Expanded(
-            child: RefreshIndicator(
-              color: ThemePalette.accent(context),
-              onRefresh: _load,
-              child: _buildBody(context),
-            ),
-          ),
-        ],
+      body: BlocConsumer<ApprovalsBloc, ApprovalsState>(
+        bloc: _bloc,
+        listenWhen: (_, n) => n.actionMessage != null || n.actionError != null,
+        listener: (context, state) {
+          if (state.actionError != null) {
+            AppFlushbar.showError(context, state.actionError!);
+          } else if (state.actionMessage != null) {
+            AppFlushbar.showSuccess(context, state.actionMessage!);
+          }
+        },
+        builder: (context, state) {
+          return Column(
+            children: [
+              _ApprovalTabs(
+                selected: state.filter,
+                onSelected: (f) => _bloc.add(ApprovalsFilterChanged(f)),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  color: ThemePalette.accent(context),
+                  onRefresh: () async => _bloc.add(const ApprovalsRefreshed()),
+                  child: _buildBody(context, state),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
-    if (_loading) {
+  Widget _buildBody(BuildContext context, ApprovalsState state) {
+    if (state.status == ApprovalsStatus.loading && state.items.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (state.status == ApprovalsStatus.failure && state.items.isEmpty) {
       return ListView(
         padding: const EdgeInsets.all(AppSpacing.md),
-        children: [Center(child: Text(_error!, textAlign: TextAlign.center))],
+        children: [
+          Center(
+            child: Text(
+              state.error ?? 'Не удалось загрузить.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
       );
     }
-    if (_items.isEmpty) {
+    final items = state.visible;
+    if (items.isEmpty) {
       return ListView(
         children: [
           Padding(
             padding: const EdgeInsets.all(AppSpacing.xl),
             child: Text(
-              switch (_filter) {
-                _ApprovalFilter.pending => 'Заявок на согласование нет.',
-                _ApprovalFilter.approved => 'Утверждённых техкарт нет.',
-                _ApprovalFilter.rejected => 'Отклонённых техкарт нет.',
+              switch (state.filter) {
+                ApprovalFilter.pending => 'Заявок на согласование нет.',
+                ApprovalFilter.approved => 'Утверждённых техкарт нет.',
+                ApprovalFilter.rejected => 'Отклонённых техкарт нет.',
               },
               textAlign: TextAlign.center,
               style: TextStyle(color: ThemePalette.onSurfaceMuted(context)),
@@ -273,9 +173,9 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
     }
     return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.sm),
-      itemCount: _items.length,
+      itemCount: items.length,
       itemBuilder: (_, i) {
-        final item = _items[i];
+        final item = items[i];
         return _ApprovalCard(
           item: item,
           onReview: () => _review(item),
@@ -291,8 +191,8 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
 class _ApprovalTabs extends StatelessWidget {
   const _ApprovalTabs({required this.selected, required this.onSelected});
 
-  final _ApprovalFilter selected;
-  final ValueChanged<_ApprovalFilter> onSelected;
+  final ApprovalFilter selected;
+  final ValueChanged<ApprovalFilter> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -314,7 +214,7 @@ class _ApprovalTabs extends StatelessWidget {
         ),
         child: Row(
           children: [
-            for (final filter in _ApprovalFilter.values)
+            for (final filter in ApprovalFilter.values)
               Expanded(
                 child: _ApprovalTab(
                   filter: filter,
@@ -336,7 +236,7 @@ class _ApprovalTab extends StatelessWidget {
     required this.onTap,
   });
 
-  final _ApprovalFilter filter;
+  final ApprovalFilter filter;
   final bool isActive;
   final VoidCallback onTap;
 
@@ -395,7 +295,7 @@ class _ApprovalCard extends StatelessWidget {
     required this.onReject,
   });
 
-  final _ApprovalItem item;
+  final ApprovalItem item;
   final VoidCallback onReview;
   final ValueChanged<Object> onApprove;
   final ValueChanged<Object> onReject;
@@ -415,15 +315,15 @@ class _ApprovalCard extends StatelessWidget {
   }
 
   ({Color color, String label}) _statusBadge() => switch (item.status) {
-        _ApprovalFilter.pending => (
+        ApprovalFilter.pending => (
             color: AppColors.warningAmber,
             label: 'На согласовании'
           ),
-        _ApprovalFilter.approved => (
+        ApprovalFilter.approved => (
             color: AppColors.profitGreen,
             label: 'Утверждено'
           ),
-        _ApprovalFilter.rejected => (
+        ApprovalFilter.rejected => (
             color: AppColors.dangerRed,
             label: 'Отклонено'
           ),
@@ -492,7 +392,7 @@ class _ApprovalCard extends StatelessWidget {
               const SizedBox(height: AppSpacing.sm),
               Divider(height: 1, thickness: 0.5, color: ThemePalette.border(context)),
               const SizedBox(height: AppSpacing.sm),
-              if (item.status == _ApprovalFilter.pending && id != null)
+              if (item.status == ApprovalFilter.pending && id != null)
                 Row(
                   children: [
                     Expanded(

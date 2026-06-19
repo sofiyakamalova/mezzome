@@ -1,7 +1,8 @@
 import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
@@ -9,8 +10,7 @@ import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_dashboard_model.dart';
 import 'package:mezzome/features/dashboard/data/models/manager_reports_model.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/dashboard_notifier.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/dashboard_state.dart';
+import 'package:mezzome/features/dashboard/presentation/blocs/dashboard_bloc.dart';
 import 'package:mezzome/features/dishes/data/models/plan_variance_model.dart';
 import 'package:mezzome/features/dishes/data/repository/dishes_repository.dart';
 
@@ -43,20 +43,31 @@ String _count(int value) {
 const _periods = ['day', 'week', 'month'];
 
 String _periodLabel(String period) => switch (period) {
-      'day' => 'periodDay'.tr(),
-      'month' => 'periodMonth'.tr(),
-      _ => 'periodWeek'.tr(),
-    };
+  'day' => 'periodDay'.tr(),
+  'month' => 'periodMonth'.tr(),
+  _ => 'periodWeek'.tr(),
+};
 
 /// §6.3 — дашборд директора.
-class DashboardScreen extends ConsumerWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final asyncState = ref.watch(dashboardNotifierProvider);
-    final notifier = ref.read(dashboardNotifierProvider.notifier);
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
 
+class _DashboardScreenState extends State<DashboardScreen> {
+  late final DashboardBloc _bloc = sl<DashboardBloc>()
+    ..add(const DashboardRequested());
+
+  @override
+  void dispose() {
+    _bloc.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('dashboardTitle'.tr()),
@@ -64,32 +75,36 @@ class DashboardScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'refreshTooltip'.tr(),
             icon: const Icon(Icons.refresh),
-            onPressed: notifier.refresh,
+            onPressed: () => _bloc.add(const DashboardRefreshed()),
           ),
         ],
       ),
-      body: asyncState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stackTrace) =>
-            _DashboardError(error: error, onRetry: notifier.refresh),
-        data: (state) {
-          final data = state.data;
+      body: BlocBuilder<DashboardBloc, DashboardState>(
+        bloc: _bloc,
+        builder: (context, state) {
+          if (state.data == null) {
+            if (state.status == DashboardStatus.failure) {
+              return _DashboardError(
+                error: state.error ?? '',
+                onRetry: () => _bloc.add(const DashboardRefreshed()),
+              );
+            }
+            return const Center(child: CircularProgressIndicator());
+          }
           return Column(
             children: [
               _PeriodTabs(
                 selected: state.period,
-                onSelected: notifier.setPeriod,
+                onSelected: (p) => _bloc.add(DashboardPeriodChanged(p)),
               ),
               if (state.isRefreshing)
                 const LinearProgressIndicator(minHeight: 2),
               Expanded(
-                child: data == null
-                    ? Center(child: Text('noData'.tr()))
-                    : RefreshIndicator(
-                        color: ThemePalette.accent(context),
-                        onRefresh: notifier.refresh,
-                        child: _DashboardContent(state: state),
-                      ),
+                child: RefreshIndicator(
+                  color: ThemePalette.accent(context),
+                  onRefresh: () async => _bloc.add(const DashboardRefreshed()),
+                  child: _DashboardContent(state: state),
+                ),
               ),
             ],
           );
@@ -131,8 +146,11 @@ class _DashboardError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline,
-                size: 48, color: ThemePalette.onSurfaceMuted(context)),
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: ThemePalette.onSurfaceMuted(context),
+            ),
             const SizedBox(height: AppSpacing.sm),
             Text(
               'dashboardLoadError'.tr(),
@@ -145,8 +163,8 @@ class _DashboardError extends StatelessWidget {
                 detail,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: ThemePalette.onSurfaceMuted(context),
-                    ),
+                  color: ThemePalette.onSurfaceMuted(context),
+                ),
               ),
             ],
             const SizedBox(height: AppSpacing.sm),
@@ -204,7 +222,11 @@ class _DashboardContent extends StatelessWidget {
 
 /// Карточка-секция с заголовком и иконкой (единый стиль блоков дашборда).
 class _DashSection extends StatelessWidget {
-  const _DashSection({required this.title, required this.icon, required this.child});
+  const _DashSection({
+    required this.title,
+    required this.icon,
+    required this.child,
+  });
 
   final String title;
   final IconData icon;
@@ -229,8 +251,9 @@ class _DashSection extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -269,15 +292,18 @@ class _ComplianceSection extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 ok ? 'dashOk'.tr() : '$count',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(color: color, fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               Text(
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: ThemePalette.onSurfaceMuted(context)),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: ThemePalette.onSurfaceMuted(context),
+                ),
               ),
             ],
           ),
@@ -290,9 +316,21 @@ class _ComplianceSection extends StatelessWidget {
       icon: Icons.verified_outlined,
       child: Row(
         children: [
-          tile('dashHalal'.tr(), summary.halalIssues, Icons.check_circle_outline),
-          tile('dashNutrition'.tr(), summary.nutritionMissing, Icons.egg_alt_outlined),
-          tile('dashAllergens'.tr(), summary.allergenMissing, Icons.warning_amber_outlined),
+          tile(
+            'dashHalal'.tr(),
+            summary.halalIssues,
+            Icons.check_circle_outline,
+          ),
+          tile(
+            'dashNutrition'.tr(),
+            summary.nutritionMissing,
+            Icons.egg_alt_outlined,
+          ),
+          tile(
+            'dashAllergens'.tr(),
+            summary.allergenMissing,
+            Icons.warning_amber_outlined,
+          ),
         ],
       ),
     );
@@ -318,12 +356,8 @@ class _PlanVsFactReportSection extends StatelessWidget {
     }
 
     Widget stage(String label, int value, Color color) => Expanded(
-          child: _HeroStat(
-            label: label,
-            value: _count(value),
-            color: color,
-          ),
-        );
+      child: _HeroStat(label: label, value: _count(value), color: color),
+    );
 
     return _DashSection(
       title: 'dashPlanVsFactReportTitle'.tr(),
@@ -333,11 +367,22 @@ class _PlanVsFactReportSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              stage('dashPlanned'.tr(), planned, ThemePalette.onSurface(context)),
-              stage('dashProduced'.tr(), produced, ThemePalette.accent(context)),
+              stage(
+                'dashPlanned'.tr(),
+                planned,
+                ThemePalette.onSurface(context),
+              ),
+              stage(
+                'dashProduced'.tr(),
+                produced,
+                ThemePalette.accent(context),
+              ),
               stage('dashServed'.tr(), served, AppColors.profitGreen),
-              stage('dashLeftover'.tr(), leftover,
-                  leftover > 0 ? AppColors.warningAmber : muted),
+              stage(
+                'dashLeftover'.tr(),
+                leftover,
+                leftover > 0 ? AppColors.warningAmber : muted,
+              ),
             ],
           ),
           if (report.items.length > 1) ...[
@@ -435,8 +480,10 @@ class _CostPerHeadSection extends StatelessWidget {
                 children: [
                   Expanded(
                     flex: 3,
-                    child: Text(_shortDate(i.serviceDate),
-                        style: theme.textTheme.bodySmall),
+                    child: Text(
+                      _shortDate(i.serviceDate),
+                      style: theme.textTheme.bodySmall,
+                    ),
                   ),
                   Expanded(
                     flex: 2,
@@ -451,8 +498,9 @@ class _CostPerHeadSection extends StatelessWidget {
                     child: Text(
                       showMoney ? _money(i.actualFoodCost) : '—',
                       textAlign: TextAlign.right,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -492,8 +540,9 @@ class _VarianceSection extends StatelessWidget {
                       i.category ?? '—',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   Expanded(
@@ -548,101 +597,126 @@ String _qty(double value, [String? unit]) {
 /// «План vs факт» по плану текущего дня: сколько заложили vs сколько забрали.
 /// Источник — `managerDayVarianceProvider`. Секция не показывается, если плана
 /// за день нет / роль не manager / ручка недоступна.
-class _PlanVsFactSection extends ConsumerWidget {
+class _PlanVsFactSection extends StatefulWidget {
   const _PlanVsFactSection();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(managerDayVarianceProvider);
-    final report = async.valueOrNull;
-    if (report == null || report.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  State<_PlanVsFactSection> createState() => _PlanVsFactSectionState();
+}
 
-    final theme = Theme.of(context);
-    final muted = ThemePalette.onSurfaceMuted(context);
-    final overspend = (report.variancePct ?? 0) > 5 || report.varianceCost > 0;
-    final varianceColor =
-        overspend ? AppColors.dangerRed : AppColors.profitGreen;
+class _PlanVsFactSectionState extends State<_PlanVsFactSection> {
+  late final Future<PlanVarianceReport?> _future = sl<DishesRepository>()
+      .loadManagerDayVariance();
 
-    return Padding(
-      padding: const EdgeInsets.only(top: AppSpacing.md),
-      child: Container(
-        padding: const EdgeInsets.all(AppSpacing.md),
-        decoration: BoxDecoration(
-          color: ThemePalette.surfaceCard(context),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(color: ThemePalette.border(context), width: 0.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'planVsFactTitle'.tr(),
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w600),
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<PlanVarianceReport?>(
+      future: _future,
+      builder: (context, snapshot) {
+        final report = snapshot.data;
+        if (report == null || report.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        final theme = Theme.of(context);
+        final muted = ThemePalette.onSurfaceMuted(context);
+        final overspend =
+            (report.variancePct ?? 0) > 5 || report.varianceCost > 0;
+        final varianceColor = overspend
+            ? AppColors.dangerRed
+            : AppColors.profitGreen;
+
+        return Padding(
+          padding: const EdgeInsets.only(top: AppSpacing.md),
+          child: Container(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            decoration: BoxDecoration(
+              color: ThemePalette.surfaceCard(context),
+              borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+              border: Border.all(
+                color: ThemePalette.border(context),
+                width: 0.5,
+              ),
             ),
-            const SizedBox(height: AppSpacing.sm),
-            Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _HeroStat(
-                    label: 'pvfPlanned'.tr(),
-                    value: _money(report.theoreticalCost),
+                Text(
+                  'planVsFactTitle'.tr(),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                Expanded(
-                  child: _HeroStat(
-                    label: 'pvfActual'.tr(),
-                    value: _money(report.actualCost),
-                  ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _HeroStat(
+                        label: 'pvfPlanned'.tr(),
+                        value: _money(report.theoreticalCost),
+                      ),
+                    ),
+                    Expanded(
+                      child: _HeroStat(
+                        label: 'pvfActual'.tr(),
+                        value: _money(report.actualCost),
+                      ),
+                    ),
+                    Expanded(
+                      child: _HeroStat(
+                        label: 'pvfVariance'.tr(),
+                        value: report.variancePct != null
+                            ? '${report.variancePct!.toStringAsFixed(1)}%'
+                            : _money(report.varianceCost),
+                        color: varianceColor,
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: _HeroStat(
-                    label: 'pvfVariance'.tr(),
-                    value: report.variancePct != null
-                        ? '${report.variancePct!.toStringAsFixed(1)}%'
-                        : _money(report.varianceCost),
-                    color: varianceColor,
+                if (report.lines.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  Divider(height: 1, color: ThemePalette.border(context)),
+                  const SizedBox(height: AppSpacing.xs),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 4,
+                        child: Text(
+                          'colName'.tr(),
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          'pvfPlannedFact'.tr(),
+                          textAlign: TextAlign.right,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          'pvfVariance'.tr(),
+                          textAlign: TextAlign.right,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: muted,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
+                  for (final line in report.lines) _VarianceRow(line: line),
+                ],
               ],
             ),
-            if (report.lines.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Divider(height: 1, color: ThemePalette.border(context)),
-              const SizedBox(height: AppSpacing.xs),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 4,
-                    child: Text('colName'.tr(),
-                        style: theme.textTheme.labelSmall?.copyWith(color: muted)),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'pvfPlannedFact'.tr(),
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.labelSmall?.copyWith(color: muted),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'pvfVariance'.tr(),
-                      textAlign: TextAlign.right,
-                      style: theme.textTheme.labelSmall?.copyWith(color: muted),
-                    ),
-                  ),
-                ],
-              ),
-              for (final line in report.lines)
-                _VarianceRow(line: line),
-            ],
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
@@ -762,10 +836,12 @@ class _PeriodTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLight = ThemePalette.isLight(context);
-    final activeFill =
-        isLight ? AppColorsLight.accentSoftStrong : ThemePalette.accent(context);
-    final activeText =
-        isLight ? AppColorsLight.onAccentSoftStrong : AppColors.onPrimary;
+    final activeFill = isLight
+        ? AppColorsLight.accentSoftStrong
+        : ThemePalette.accent(context);
+    final activeText = isLight
+        ? AppColorsLight.onAccentSoftStrong
+        : AppColors.onPrimary;
     final inactiveText = ThemePalette.onSurfaceMuted(context);
 
     return GestureDetector(
@@ -783,9 +859,9 @@ class _PeriodTab extends StatelessWidget {
           label,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: isActive ? activeText : inactiveText,
-                fontWeight: FontWeight.w500,
-              ),
+            color: isActive ? activeText : inactiveText,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );
@@ -807,8 +883,9 @@ class _HeroStat extends StatelessWidget {
       children: [
         Text(
           label,
-          style: theme.textTheme.labelSmall
-              ?.copyWith(color: ThemePalette.onSurfaceMuted(context)),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: ThemePalette.onSurfaceMuted(context),
+          ),
         ),
         const SizedBox(height: 2),
         Text(
@@ -868,8 +945,7 @@ class _ManagerKpiGrid extends StatelessWidget {
           spacing: gap,
           runSpacing: gap,
           children: [
-            for (final item in items)
-              SizedBox(width: cardWidth, child: item),
+            for (final item in items) SizedBox(width: cardWidth, child: item),
           ],
         );
       },
@@ -909,8 +985,9 @@ class _KpiTile extends StatelessWidget {
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: ThemePalette.onSurfaceMuted(context)),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: ThemePalette.onSurfaceMuted(context),
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Row(

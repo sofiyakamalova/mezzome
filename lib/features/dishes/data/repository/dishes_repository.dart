@@ -1,13 +1,11 @@
 import 'package:dio/dio.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mezzome/core/di/session_holder.dart';
 import 'package:mezzome/core/logging/http_log_utils.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
-import 'package:mezzome/core/network/dio_provider.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/domain/user_role.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
 import 'package:mezzome/features/dishes/data/api/dishes_api.dart';
 import 'package:mezzome/features/dishes/data/api/production_plans_api.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
@@ -23,17 +21,17 @@ class DishesRepository {
   DishesRepository({
     required DishesApi dishesApi,
     required ProductionPlansApi productionPlansApi,
-    required Ref ref,
+    required SessionHolder session,
   }) : _dishesApi = dishesApi,
        _productionPlansApi = productionPlansApi,
-       _ref = ref;
+       _session = session;
 
   final DishesApi _dishesApi;
   final ProductionPlansApi _productionPlansApi;
-  final Ref _ref;
+  final SessionHolder _session;
 
   bool get usesManagerApi {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     return role != null && usesDirectorShell(role);
   }
 
@@ -41,7 +39,7 @@ class DishesRepository {
     DateTime date, {
     MenuServiceType? serviceType,
   }) async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     if (role == null) {
       return const ScheduleFetchResult(items: []);
     }
@@ -155,7 +153,7 @@ class DishesRepository {
 
   /// Каталог всех блюд (fallback / справочник).
   Future<List<DishModel>> fetchCatalogDishes() async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     if (role == null) {
       return [];
     }
@@ -171,7 +169,7 @@ class DishesRepository {
   /// возвращаем её единственным элементом — форма сама решает, показывать
   /// выбор или статичную подпись.
   Future<List<KitchenModel>> planKitchens() async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     final asManager = role != null && usesDirectorShell(role);
     if (!asManager) {
       final kitchen = await _productionPlansApi.getChefCurrentKitchen();
@@ -213,7 +211,7 @@ class DishesRepository {
   /// Возвращает `null`, если роль не manager, плана за день нет или ручка
   /// недоступна — UI просто не показывает секцию (без ошибки).
   Future<PlanVarianceReport?> loadManagerDayVariance({DateTime? date}) async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     if (role != UserRole.manager) {
       return null;
     }
@@ -253,7 +251,7 @@ class DishesRepository {
   Future<ProductionPlanDetail> createProductionPlan(
     ProductionPlanCreateRequest request,
   ) async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     final asManager = role != null && usesDirectorShell(role);
     appLogger.i(
       'Create plan (${asManager ? 'manager' : 'chef'}): '
@@ -269,7 +267,7 @@ class DishesRepository {
 
   /// Проверка остатков по плану: хватает ли, дефициты и общая стоимость.
   Future<ProductionPlanStockCheck> checkStock(int planId) async {
-    final role = _ref.read(authSessionProvider).valueOrNull?.role;
+    final role = _session.role;
     final asManager = role != null && usesDirectorShell(role);
     final result = asManager
         ? await _productionPlansApi.checkManagerPlanStock(planId)
@@ -400,25 +398,3 @@ class DishesRepository {
 bool _useChefProductionPlansApi(UserRole role) {
   return isKitchenStaff(role) && !canOpenDirectorDashboard(role);
 }
-
-final dishesApiProvider = Provider<DishesApi>((ref) {
-  return DishesApi(ref.watch(dioProvider));
-});
-
-final productionPlansApiProvider = Provider<ProductionPlansApi>((ref) {
-  return ProductionPlansApi(ref.watch(dioProvider));
-});
-
-final dishesRepositoryProvider = Provider<DishesRepository>((ref) {
-  return DishesRepository(
-    dishesApi: ref.watch(dishesApiProvider),
-    productionPlansApi: ref.watch(productionPlansApiProvider),
-    ref: ref,
-  );
-});
-
-/// «План vs факт» по плану текущего дня — для секции на дашборде менеджера.
-final managerDayVarianceProvider =
-    FutureProvider.autoDispose<PlanVarianceReport?>((ref) {
-      return ref.watch(dishesRepositoryProvider).loadManagerDayVariance();
-    });

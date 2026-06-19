@@ -4,7 +4,7 @@ import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
-import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
+import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/production_grid_status.dart';
 
 /// Недельная сетка меню-борда «категория × день» (как в HTML-прототипе).

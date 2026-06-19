@@ -1,45 +1,47 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/core/widgets/app_flushbar.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/data/models/dish_model.dart';
 import 'package:mezzome/features/dishes/data/models/menu_category_model.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_model.dart';
 import 'package:mezzome/features/dishes/domain/menu_service_type.dart';
-import 'package:mezzome/features/dishes/presentation/providers/create_plan_notifier.dart';
-import 'package:mezzome/features/dishes/presentation/providers/create_plan_state.dart';
-import 'package:mezzome/features/dishes/presentation/providers/production_grid_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/create_plan_bloc.dart';
 
 /// Экран создания производственного плана (роль `manager`, router-гейт).
-/// Состояние держит [CreatePlanNotifier]: справочники, черновик строк,
-/// валидация и отправка. Слот строки = категория выбранного блюда.
-class CreatePlanScreen extends ConsumerStatefulWidget {
+/// Состояние держит [CreatePlanBloc]: справочники, черновик строк, валидация
+/// и отправка. Слот строки = категория выбранного блюда.
+class CreatePlanScreen extends StatefulWidget {
   const CreatePlanScreen({super.key});
 
   @override
-  ConsumerState<CreatePlanScreen> createState() => _CreatePlanScreenState();
+  State<CreatePlanScreen> createState() => _CreatePlanScreenState();
 }
 
-class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
+class _CreatePlanScreenState extends State<CreatePlanScreen> {
   final _peopleController = TextEditingController();
   final _reserveController = TextEditingController();
   final _notesController = TextEditingController();
 
+  /// Роль для ветвления API (экран открыт авторизованно).
+  late final CreatePlanBloc _bloc =
+      sl<CreatePlanBloc>(param1: sl<AuthSessionCubit>().state.role);
+
   @override
   void dispose() {
+    _bloc.close();
     _peopleController.dispose();
     _reserveController.dispose();
     _notesController.dispose();
     super.dispose();
   }
-
-  CreatePlanNotifier get _notifier =>
-      ref.read(createPlanNotifierProvider.notifier);
 
   Future<void> _pickDate(DateTime current) async {
     final picked = await showDatePicker(
@@ -49,28 +51,16 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
       lastDate: DateFormatUtil.today.add(const Duration(days: 365)),
     );
     if (picked != null) {
-      _notifier.setDate(picked);
+      _bloc.add(PlanDateChanged(picked));
     }
   }
 
-  Future<void> _submit() async {
-    FocusScope.of(context).unfocus();
-    final plan = await _notifier.submit();
-    if (!mounted) return;
-    if (plan == null) {
-      final err = ref.read(createPlanNotifierProvider).submitError;
-      AppFlushbar.showError(context, err ?? 'createPlanError'.tr());
-      return;
-    }
-    // Предзагружаем недельную сетку на дату плана, чтобы он сразу был виден.
-    final date = ref.read(createPlanNotifierProvider).date;
-    ref.read(productionGridNotifierProvider.notifier).load(anchorDate: date);
-    // Чистим поля-контроллеры под новый план.
+  void _onCreated(ProductionPlanDetail plan) {
     _peopleController.clear();
     _reserveController.clear();
     _notesController.clear();
-    _notifier.reset();
-    await _showCreatedDialog(plan);
+    _bloc.add(const PlanFormReset());
+    _showCreatedDialog(plan);
   }
 
   /// Итог создания. Наличие остатков берём прямо из ответа (`stock_available`
@@ -121,21 +111,34 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final state = ref.watch(createPlanNotifierProvider);
-
     return Scaffold(
       appBar: AppBar(title: Text('createPlanTitle'.tr())),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: state.isBootstrapping
-            ? const Center(child: CircularProgressIndicator())
-            : state.bootstrapError != null
-                ? _BootstrapError(
-                    message: state.bootstrapError!,
-                    onRetry: _notifier.retryBootstrap,
-                  )
-                : _buildForm(context, state),
+      body: BlocConsumer<CreatePlanBloc, CreatePlanState>(
+        bloc: _bloc,
+        listenWhen: (p, n) =>
+            p.createdPlan != n.createdPlan || p.submitError != n.submitError,
+        listener: (context, state) {
+          if (state.createdPlan != null) {
+            _onCreated(state.createdPlan!);
+          } else if (state.submitError != null) {
+            AppFlushbar.showError(context, state.submitError!);
+          }
+        },
+        builder: (context, state) {
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => FocusScope.of(context).unfocus(),
+            child: state.isBootstrapping
+                ? const Center(child: CircularProgressIndicator())
+                : state.bootstrapError != null
+                    ? _BootstrapError(
+                        message: state.bootstrapError!,
+                        onRetry: () =>
+                            _bloc.add(const CreatePlanRetryBootstrap()),
+                      )
+                    : _buildForm(context, state),
+          );
+        },
       ),
     );
   }
@@ -168,7 +171,7 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                           child: Text(k.name ?? '#${k.id}'),
                         ),
                     ],
-                    onChanged: _notifier.setKitchen,
+                    onChanged: (id) => _bloc.add(PlanKitchenChanged(id)),
                   ),
                 )
               else if (state.kitchens.isNotEmpty)
@@ -194,7 +197,8 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                     ButtonSegment(value: s, label: Text(s.label)),
                 ],
                 selected: {state.service},
-                onSelectionChanged: (sel) => _notifier.setService(sel.first),
+                onSelectionChanged: (sel) =>
+                    _bloc.add(PlanServiceChanged(sel.first)),
               ),
               const SizedBox(height: AppSpacing.sm),
               // Дата + число едоков
@@ -218,7 +222,7 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                         isDense: true,
                       ),
                       onChanged: (v) =>
-                          _notifier.setPeopleCount(int.tryParse(v.trim())),
+                          _bloc.add(PlanPeopleChanged(int.tryParse(v.trim()))),
                     ),
                   ),
                 ],
@@ -240,9 +244,9 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                         isDense: true,
                         hintText: '1.0',
                       ),
-                      onChanged: (v) => _notifier.setReserveCoefficient(
+                      onChanged: (v) => _bloc.add(PlanReserveChanged(
                         double.tryParse(v.trim().replaceAll(',', '.')),
-                      ),
+                      )),
                     ),
                   ),
                   const SizedBox(width: AppSpacing.sm),
@@ -253,7 +257,7 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                         labelText: 'createPlanNotes'.tr(),
                         isDense: true,
                       ),
-                      onChanged: _notifier.setNotes,
+                      onChanged: (v) => _bloc.add(PlanNotesChanged(v)),
                     ),
                   ),
                 ],
@@ -273,15 +277,17 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
                   item: item,
                   dishes: state.catalog,
                   category: _categoryFor(item, dishById, categoryById),
-                  onDish: (id) => _notifier.setItemDish(item.key, id),
-                  onPortions: (p) => _notifier.setItemPortions(item.key, p),
+                  onDish: (id) =>
+                      _bloc.add(PlanItemDishChanged(item.key, id)),
+                  onPortions: (p) =>
+                      _bloc.add(PlanItemPortionsChanged(item.key, p)),
                   onRemove: state.items.length > 1
-                      ? () => _notifier.removeItem(item.key)
+                      ? () => _bloc.add(PlanItemRemoved(item.key))
                       : null,
                 ),
               const SizedBox(height: AppSpacing.xs),
               OutlinedButton.icon(
-                onPressed: _notifier.addItem,
+                onPressed: () => _bloc.add(const PlanItemAdded()),
                 icon: const Icon(Icons.add, size: 18),
                 label: Text('createPlanAddItem'.tr()),
               ),
@@ -297,7 +303,12 @@ class _CreatePlanScreenState extends ConsumerState<CreatePlanScreen> {
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.md),
             child: FilledButton.icon(
-              onPressed: state.canSubmit ? _submit : null,
+              onPressed: state.canSubmit
+                  ? () {
+                      FocusScope.of(context).unfocus();
+                      _bloc.add(const PlanSubmitted());
+                    }
+                  : null,
               icon: state.isSubmitting
                   ? const SizedBox(
                       width: 16,

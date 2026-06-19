@@ -1,25 +1,32 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_colors_light.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/l10n/app_locales.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/router/router_extensions.dart';
-import 'package:mezzome/core/theme/theme_mode_provider.dart';
+import 'package:mezzome/core/theme/theme_mode_cubit.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/data/models/user_model.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 
-class SettingsScreen extends ConsumerWidget {
+class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final session = ref.watch(authSessionProvider);
-    final themeModeAsync = ref.watch(themeModeProvider);
+  Widget build(BuildContext context) {
+    return BlocBuilder<AuthSessionCubit, AuthSessionState>(
+      bloc: sl<AuthSessionCubit>(),
+      builder: (context, session) => _build(context, session),
+    );
+  }
+
+  Widget _build(BuildContext context, AuthSessionState session) {
+    final user = session.user;
 
     return Scaffold(
       appBar: AppBar(title: Text('settingsTitle'.tr())),
@@ -27,22 +34,15 @@ class SettingsScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(AppSpacing.md),
         children: [
           // Профиль
-          session.when(
-            loading: () => const _CardBox(
+          if (session.isLoading)
+            const _CardBox(
               child: Padding(
                 padding: EdgeInsets.all(AppSpacing.md),
                 child: Center(child: CircularProgressIndicator()),
               ),
-            ),
-            error: (error, stackTrace) => _CardBox(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.md),
-                child: Text('settingsAccountLoadError'.tr()),
-              ),
-            ),
-            data: (user) =>
-                user == null ? const SizedBox.shrink() : _ProfileCard(user: user),
-          ),
+            )
+          else if (user != null)
+            _ProfileCard(user: user),
           const SizedBox(height: AppSpacing.lg),
 
           // Язык
@@ -73,16 +73,9 @@ class SettingsScreen extends ConsumerWidget {
           _CardBox(
             child: Padding(
               padding: const EdgeInsets.all(AppSpacing.sm),
-              child: themeModeAsync.when(
-                loading: () => const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(AppSpacing.md),
-                    child: CircularProgressIndicator(),
-                  ),
-                ),
-                error: (error, stackTrace) =>
-                    Text('settingsThemeLoadError'.tr()),
-                data: (themeMode) => SizedBox(
+              child: BlocBuilder<ThemeModeCubit, ThemeMode>(
+                bloc: sl<ThemeModeCubit>(),
+                builder: (context, themeMode) => SizedBox(
                   width: double.infinity,
                   child: SegmentedButton<ThemeMode>(
                     showSelectedIcon: false,
@@ -99,11 +92,8 @@ class SettingsScreen extends ConsumerWidget {
                       ),
                     ],
                     selected: {themeMode},
-                    onSelectionChanged: (selection) {
-                      ref
-                          .read(themeModeProvider.notifier)
-                          .setThemeMode(selection.first);
-                    },
+                    onSelectionChanged: (selection) =>
+                        sl<ThemeModeCubit>().setThemeMode(selection.first),
                   ),
                 ),
               ),
@@ -112,10 +102,10 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.lg),
 
           // Выход
-          if (session.valueOrNull != null)
+          if (user != null)
             OutlinedButton.icon(
               onPressed: () async {
-                await ref.read(authSessionProvider.notifier).logout();
+                await sl<AuthSessionCubit>().logout();
                 if (context.mounted) {
                   context.goToLogin();
                 }

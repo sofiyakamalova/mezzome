@@ -1,13 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/config/app_config.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
-import 'package:mezzome/core/network/api_client.dart';
-import 'package:mezzome/core/services/device_info_provider.dart';
 import 'package:mezzome/core/services/device_info_service.dart';
 import 'package:mezzome/core/services/token_storage.dart';
-import 'package:mezzome/core/services/token_storage_provider.dart';
 import 'package:mezzome/features/auth/data/api/auth_api.dart';
 import 'package:mezzome/features/auth/data/models/otp_send_request.dart';
 import 'package:mezzome/features/auth/data/models/otp_verify_request.dart';
@@ -120,11 +116,3 @@ bool _isUserNotFound(DioException error) {
   }
   return false;
 }
-
-final authRepositoryProvider = Provider<AuthRepository>((ref) {
-  return AuthRepository(
-    api: ref.watch(authApiProvider),
-    tokenStorage: ref.watch(tokenStorageProvider),
-    deviceInfo: ref.watch(deviceInfoProvider),
-  );
-});

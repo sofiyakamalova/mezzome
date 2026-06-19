@@ -1,6 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mezzome/core/l10n/app_locales.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -23,21 +22,14 @@ Widget wrapWithLocalization(Widget child) {
   );
 }
 
-Widget wrapMaterialApp(
-  Widget home, {
-  List<Override> overrides = const [],
-}) {
+Widget wrapMaterialApp(Widget home) {
   return wrapWithLocalization(
     Builder(
-      builder: (context) => ProviderScope(
-        key: UniqueKey(),
-        overrides: overrides,
-        child: MaterialApp(
-          localizationsDelegates: context.localizationDelegates,
-          supportedLocales: context.supportedLocales,
-          locale: context.locale,
-          home: home,
-        ),
+      builder: (context) => MaterialApp(
+        localizationsDelegates: context.localizationDelegates,
+        supportedLocales: context.supportedLocales,
+        locale: context.locale,
+        home: home,
       ),
     ),
   );

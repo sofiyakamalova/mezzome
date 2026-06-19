@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
 import 'package:mezzome/features/dishes/data/models/production_plan_model.dart';
 import 'package:retrofit/retrofit.dart';
 
@@ -9,41 +8,9 @@ part 'production_plans_api.g.dart';
 abstract class ProductionPlansApi {
   factory ProductionPlansApi(Dio dio, {String? baseUrl}) = _ProductionPlansApi;
 
-  /// Недельная сетка «слот × день» для меню-борда (роль chef).
-  @GET('/chef/production-plans/grid')
-  Future<ProductionPlanGridResponse> getChefGrid({
-    @Query('week_start') String? weekStart,
-    @Query('date') String? date,
-    @Query('service_type') required String serviceType,
-    @Query('kitchen_id') int? kitchenId,
-  });
-
-  /// Недельная сетка «слот × день» для меню-борда (роль supervisor).
-  @GET('/supervisor/production-plans/grid')
-  Future<ProductionPlanGridResponse> getSupervisorGrid({
-    @Query('week_start') String? weekStart,
-    @Query('date') String? date,
-    @Query('service_type') required String serviceType,
-    @Query('kitchen_id') int? kitchenId,
-  });
-
-  /// Недельная сетка «слот × день» для меню-борда (роль owner).
-  @GET('/owner/production-plans/grid')
-  Future<ProductionPlanGridResponse> getOwnerGrid({
-    @Query('week_start') String? weekStart,
-    @Query('date') String? date,
-    @Query('service_type') required String serviceType,
-    @Query('kitchen_id') int? kitchenId,
-  });
-
-  /// Недельная сетка «слот × день» для меню-борда (роль manager).
-  @GET('/manager/production-plans/grid')
-  Future<ProductionPlanGridResponse> getManagerGrid({
-    @Query('week_start') String? weekStart,
-    @Query('date') String? date,
-    @Query('service_type') required String serviceType,
-    @Query('kitchen_id') int? kitchenId,
-  });
+  // Недельная сетка меню-борда (`/{role}/production-plans/grid`) переведена на
+  // отдельную вертикаль features/dishes (BLoC + Dio source), см.
+  // ProductionGridRemoteSource.
 
   @GET('/supervisor/production-plans')
   Future<ProductionPlanListResponse> getSupervisorPlans(

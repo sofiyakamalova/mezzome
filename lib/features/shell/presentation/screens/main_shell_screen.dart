@@ -1,12 +1,14 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/domain/user_role.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 
 /// Persistent bottom tab bar for authenticated main flows.
-class MainShellScreen extends ConsumerWidget {
+class MainShellScreen extends StatelessWidget {
   const MainShellScreen({required this.navigationShell, super.key});
 
   final StatefulNavigationShell navigationShell;
@@ -20,8 +22,14 @@ class MainShellScreen extends ConsumerWidget {
   static const int expensesBranch = 6;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final role = ref.watch(authSessionProvider).valueOrNull?.role;
+  Widget build(BuildContext context) {
+    return BlocBuilder<AuthSessionCubit, AuthSessionState>(
+      bloc: sl<AuthSessionCubit>(),
+      builder: (context, session) => _buildShell(context, session.role),
+    );
+  }
+
+  Widget _buildShell(BuildContext context, UserRole? role) {
     final isManager = role != null && usesDirectorShell(role);
 
     // Manager (директор): дашборд · таблица блюд · план на неделю ·

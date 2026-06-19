@@ -1,16 +1,18 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
+import 'package:mezzome/core/responsive/form_factor.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/features/dishes/data/models/dish_model.dart';
-import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
+import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/data/models/technical_card_model.dart';
-import 'package:mezzome/features/dishes/data/repository/menu_dashboard_repository.dart';
 import 'package:mezzome/features/dishes/domain/scale_variance.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_history.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/tech_card_cubit.dart';
 
 /// Полноэкранная страница техкарты (открывается по тапу на ячейку сетки).
 ///
@@ -18,7 +20,7 @@ import 'package:mezzome/features/dishes/domain/tech_card_history.dart';
 /// блюдо меню (цена + аллергены) и история. Заглушкой остаётся только «факт по
 /// весам» (CAS/LongFig) — там нужен запрос по плану/партии (см.
 /// docs/backend-techcard-needs.md).
-class TechCardPage extends ConsumerStatefulWidget {
+class TechCardPage extends StatefulWidget {
   const TechCardPage({
     super.key,
     required this.item,
@@ -59,55 +61,24 @@ class TechCardPage extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<TechCardPage> createState() => _TechCardPageState();
+  State<TechCardPage> createState() => _TechCardPageState();
 }
 
-class _PageData {
-  const _PageData(this.card, this.dish, this.history, this.scale);
-  final TechnicalCardModel? card;
-  final DishModel? dish;
-  final TechCardHistoryResult history;
-  final ScaleVarianceResult scale;
-}
-
-class _TechCardPageState extends ConsumerState<TechCardPage> {
-  late Future<_PageData> _future;
+class _TechCardPageState extends State<TechCardPage> {
+  late final TechCardCubit _cubit = sl<TechCardCubit>()..load(widget.item);
 
   @override
-  void initState() {
-    super.initState();
-    _future = _load();
+  void dispose() {
+    _cubit.close();
+    super.dispose();
   }
 
-  Future<_PageData> _load() async {
-    final repo = ref.read(menuDashboardRepositoryProvider);
-    final item = widget.item;
-    TechnicalCardModel? card;
-    if (item.technicalCardId != null) {
-      card = await repo.loadTechnicalCardFull(item.technicalCardId!);
-    }
-    if (card == null && item.menuItemId != null) {
-      card = await repo.findTechnicalCardByMenuItem(item.menuItemId!);
-    }
-    card ??= await repo.findTechnicalCardByName(item.menuItemName ?? '');
-
-    final menuItemId = item.menuItemId ?? card?.menuItemId;
-    final dish = menuItemId == null
-        ? null
-        : await repo.loadMenuItem(menuItemId);
-
-    var history = const TechCardHistoryResult();
-    var scale = const ScaleVarianceResult();
-    final cardId = card?.id ?? item.technicalCardId;
-    if (cardId != null) {
-      history = await repo.loadTechnicalCardHistory(cardId);
-      scale = await repo.loadScaleVariance(cardId);
-    }
-    return _PageData(card, dish, history, scale);
-  }
-
-  Future<void> _reload() async {
-    setState(() => _future = _load());
+  /// Открыть редактор техкарты и после него перечитать страницу.
+  Future<void> _onEdit() async {
+    final edit = widget.onEdit;
+    if (edit == null) return;
+    await edit();
+    if (mounted) _cubit.load(widget.item);
   }
 
   @override
@@ -125,44 +96,50 @@ class _TechCardPageState extends ConsumerState<TechCardPage> {
                 vertical: AppSpacing.xs,
               ),
               child: FilledButton.icon(
-                onPressed: () async {
-                  await widget.onEdit!();
-                  if (mounted) await _reload();
-                },
+                onPressed: _onEdit,
                 icon: const Icon(Icons.edit_outlined, size: 18),
                 label: Text('tcpEdit'.tr()),
               ),
             ),
         ],
       ),
-      body: FutureBuilder<_PageData>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
+      body: BlocBuilder<TechCardCubit, TechCardState>(
+        bloc: _cubit,
+        builder: (context, state) {
+          if (state.status == TechCardStatus.loading) {
             return const Center(child: CircularProgressIndicator());
           }
-          final card = snap.data?.card;
-          if (card == null) {
+          final data = state.data;
+          if (data == null) {
             return _ErrorState(
               name: item.menuItemName ?? '—',
-              onRetry: _reload,
+              onRetry: () => _cubit.load(item),
             );
           }
-          return _TechCardBody(
-            card: card,
-            dish: snap.data!.dish,
-            item: item,
-            history: snap.data!.history,
-            scale: snap.data!.scale,
-            signature: widget.signature,
-            showFinancials: widget.showFinancials,
-            onEdit: widget.onEdit == null
-                ? null
-                : () async {
-                    await widget.onEdit!();
-                    if (mounted) await _reload();
-                  },
-          );
+          final onEdit = widget.onEdit == null ? null : _onEdit;
+          // Десктоп/широкий веб — двухколоночная верстка; телефон/планшет —
+          // одноколоночная. Решение по ШИРИНЕ окна, не по платформе.
+          return context.isExpanded
+              ? _TechCardWideView(
+                  card: data.card,
+                  dish: data.dish,
+                  item: item,
+                  history: data.history,
+                  scale: data.scale,
+                  signature: widget.signature,
+                  showFinancials: widget.showFinancials,
+                  onEdit: onEdit,
+                )
+              : _TechCardCompactView(
+                  card: data.card,
+                  dish: data.dish,
+                  item: item,
+                  history: data.history,
+                  scale: data.scale,
+                  signature: widget.signature,
+                  showFinancials: widget.showFinancials,
+                  onEdit: onEdit,
+                );
         },
       ),
     );
@@ -266,8 +243,9 @@ class _Derived {
   }
 }
 
-class _TechCardBody extends StatelessWidget {
-  const _TechCardBody({
+/// Верстка для телефона/планшета (compact/medium): всё в одну колонку.
+class _TechCardCompactView extends StatelessWidget {
+  const _TechCardCompactView({
     required this.card,
     required this.dish,
     required this.item,
@@ -289,9 +267,89 @@ class _TechCardBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return _TechCardBody(
+      card: card,
+      dish: dish,
+      item: item,
+      history: history,
+      scale: scale,
+      signature: signature,
+      showFinancials: showFinancials,
+      onEdit: onEdit,
+      wide: false,
+    );
+  }
+}
+
+/// Верстка для десктопа/широкого веба (expanded): двухколоночные ряды,
+/// плотный центрированный канвас.
+class _TechCardWideView extends StatelessWidget {
+  const _TechCardWideView({
+    required this.card,
+    required this.dish,
+    required this.item,
+    required this.history,
+    required this.scale,
+    required this.signature,
+    required this.showFinancials,
+    this.onEdit,
+  });
+
+  final TechnicalCardModel card;
+  final DishModel? dish;
+  final ProductionPlanGridCellItem item;
+  final TechCardHistoryResult history;
+  final ScaleVarianceResult scale;
+  final String signature;
+  final bool showFinancials;
+  final Future<void> Function()? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TechCardBody(
+      card: card,
+      dish: dish,
+      item: item,
+      history: history,
+      scale: scale,
+      signature: signature,
+      showFinancials: showFinancials,
+      onEdit: onEdit,
+      wide: true,
+    );
+  }
+}
+
+/// Общая сборка карточек. `wide` определяет двухколоночные ряды (передаётся
+/// из view — compact/expanded), а не вычисляется здесь, чтобы решение о форм-
+/// факторе жило в одном месте.
+class _TechCardBody extends StatelessWidget {
+  const _TechCardBody({
+    required this.card,
+    required this.dish,
+    required this.item,
+    required this.history,
+    required this.scale,
+    required this.signature,
+    required this.showFinancials,
+    required this.wide,
+    this.onEdit,
+  });
+
+  final TechnicalCardModel card;
+  final DishModel? dish;
+  final ProductionPlanGridCellItem item;
+  final TechCardHistoryResult history;
+  final ScaleVarianceResult scale;
+  final String signature;
+  final bool showFinancials;
+  final bool wide;
+  final Future<void> Function()? onEdit;
+
+  @override
+  Widget build(BuildContext context) {
     final d = _Derived(card, dish);
     final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 900;
     final allergens = dish?.allergens ?? const <String>[];
 
     final yieldCard = _YieldCard(card: card, derived: d, item: item);

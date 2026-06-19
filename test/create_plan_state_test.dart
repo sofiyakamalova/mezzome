@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mezzome/features/dishes/presentation/providers/create_plan_state.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/create_plan_bloc.dart';
 
 void main() {
   final base = CreatePlanState(date: DateTime(2026, 6, 14));

@@ -1,15 +1,15 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/features/dishes/data/repository/menu_dashboard_repository.dart';
 import 'package:mezzome/features/dishes/domain/tech_card_history.dart';
 
 /// История версий техкарты: кто, когда и что изменил.
-class TechCardHistorySheet extends ConsumerStatefulWidget {
+class TechCardHistorySheet extends StatefulWidget {
   const TechCardHistorySheet({
     super.key,
     required this.cardId,
@@ -36,18 +36,16 @@ class TechCardHistorySheet extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<TechCardHistorySheet> createState() =>
-      _TechCardHistorySheetState();
+  State<TechCardHistorySheet> createState() => _TechCardHistorySheetState();
 }
 
-class _TechCardHistorySheetState extends ConsumerState<TechCardHistorySheet> {
+class _TechCardHistorySheetState extends State<TechCardHistorySheet> {
   late Future<TechCardHistoryResult> _future;
 
   @override
   void initState() {
     super.initState();
-    _future = ref
-        .read(menuDashboardRepositoryProvider)
+    _future = sl<MenuDashboardRepository>()
         .loadTechnicalCardHistory(widget.cardId);
   }
 

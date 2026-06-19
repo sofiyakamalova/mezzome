@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/features/dishes/domain/journal_entry.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -46,10 +45,6 @@ class MenuJournalStorage {
     await _prefs.setStringList(_modifiedCellsKey, keys.toList());
   }
 }
-
-final menuJournalStorageProvider = Provider<MenuJournalStorage>((ref) {
-  throw UnimplementedError('Override in main.dart');
-});
 
 Future<MenuJournalStorage> createMenuJournalStorage() async {
   final prefs = await SharedPreferences.getInstance();

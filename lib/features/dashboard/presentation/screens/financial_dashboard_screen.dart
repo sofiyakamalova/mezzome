@@ -1,59 +1,81 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
+import 'package:mezzome/core/responsive/form_factor.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/money_format.dart';
-import 'package:mezzome/features/dashboard/data/models/financial_dashboard_model.dart';
-import 'package:mezzome/features/dashboard/data/models/nutrition_dashboard_model.dart';
-import 'package:mezzome/features/dashboard/data/models/warehouse_dashboard_model.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/branches_dashboard_notifier.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/financial_dashboard_notifier.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/nutrition_dashboard_notifier.dart';
-import 'package:mezzome/features/dashboard/presentation/providers/warehouse_dashboard_notifier.dart';
+import 'package:mezzome/features/branches/domain/models/object_finance.dart';
+import 'package:mezzome/features/branches/presentation/blocs/branches_bloc.dart';
+import 'package:mezzome/features/financial/domain/models/financial_dashboard.dart';
+import 'package:mezzome/features/financial/presentation/blocs/financial_bloc.dart';
+import 'package:mezzome/features/nutrition/domain/models/nutrition_dashboard.dart';
+import 'package:mezzome/features/nutrition/presentation/blocs/nutrition_bloc.dart';
+import 'package:mezzome/features/warehouse/domain/models/warehouse_dashboard.dart';
+import 'package:mezzome/features/warehouse/presentation/blocs/warehouse_bloc.dart';
 
-/// Вкладка «Финансы»: сегмент «Обзор» (общий P&L из `GET /dashboard`) и
-/// «Объекты» (P&L по филиалам из `GET /dashboard/branches`).
-class FinancialDashboardScreen extends ConsumerStatefulWidget {
+/// Вкладка «Финансы»: сегменты Обзор · Объекты · Питание · Склад — все на BLoC.
+class FinancialDashboardScreen extends StatefulWidget {
   const FinancialDashboardScreen({super.key});
 
   @override
-  ConsumerState<FinancialDashboardScreen> createState() =>
+  State<FinancialDashboardScreen> createState() =>
       _FinancialDashboardScreenState();
 }
 
-class _FinancialDashboardScreenState
-    extends ConsumerState<FinancialDashboardScreen> {
-  /// 0 — «Обзор», 1 — «Объекты», 2 — «Склад».
-  int _segment = 0;
+class _FinancialDashboardScreenState extends State<FinancialDashboardScreen> {
+  /// Коды сегментов: 0 — «Обзор», 1 — «Объекты», 2 — «Склад», 3 — «Питание».
+  /// Порядок вкладок задаётся в [_SegmentTabs]; по умолчанию открыт «Питание».
+  int _segment = 3;
+
+  /// Все сегменты — BLoC + get_it (новая архитектура). Bloc'и живут на время
+  /// экрана; единый фильтр периода синхронизируется между сегментами.
+  late final FinancialBloc _financialBloc =
+      sl<FinancialBloc>()..add(const FinancialRequested());
+  late final WarehouseBloc _warehouseBloc =
+      sl<WarehouseBloc>()..add(const WarehouseRequested());
+  late final BranchesBloc _branchesBloc =
+      sl<BranchesBloc>()..add(const BranchesRequested());
+  late final NutritionBloc _nutritionBloc =
+      sl<NutritionBloc>()..add(const NutritionRequested());
+
+  @override
+  void dispose() {
+    _financialBloc.close();
+    _warehouseBloc.close();
+    _branchesBloc.close();
+    _nutritionBloc.close();
+    super.dispose();
+  }
 
   String _periodOf(int seg) {
     switch (seg) {
       case 1:
-        return ref.read(branchesDashboardNotifierProvider.notifier).period;
+        return _branchesBloc.state.period;
       case 2:
-        return ref.read(warehouseDashboardNotifierProvider.notifier).period;
+        return _warehouseBloc.state.period;
       case 3:
-        return ref.read(nutritionDashboardNotifierProvider.notifier).period;
+        return _nutritionBloc.state.period;
       default:
-        return ref.read(financialDashboardNotifierProvider.notifier).period;
+        return _financialBloc.state.period;
     }
   }
 
   void _setPeriodOf(int seg, String period) {
     switch (seg) {
       case 1:
-        ref.read(branchesDashboardNotifierProvider.notifier).setPeriod(period);
+        _branchesBloc.add(BranchesPeriodChanged(period));
         break;
       case 2:
-        ref.read(warehouseDashboardNotifierProvider.notifier).setPeriod(period);
+        _warehouseBloc.add(WarehousePeriodChanged(period));
         break;
       case 3:
-        ref.read(nutritionDashboardNotifierProvider.notifier).setPeriod(period);
+        _nutritionBloc.add(NutritionPeriodChanged(period));
         break;
       default:
-        ref.read(financialDashboardNotifierProvider.notifier).setPeriod(period);
+        _financialBloc.add(FinancialPeriodChanged(period));
     }
   }
 
@@ -67,29 +89,41 @@ class _FinancialDashboardScreenState
   void _refreshActive() {
     switch (_segment) {
       case 1:
-        ref.read(branchesDashboardNotifierProvider.notifier).refresh();
+        _branchesBloc.add(const BranchesRefreshed());
         break;
       case 2:
-        ref.read(warehouseDashboardNotifierProvider.notifier).refresh();
+        _warehouseBloc.add(const WarehouseRefreshed());
         break;
       case 3:
-        ref.read(nutritionDashboardNotifierProvider.notifier).refresh();
+        _nutritionBloc.add(const NutritionRefreshed());
         break;
       default:
-        ref.read(financialDashboardNotifierProvider.notifier).refresh();
+        _financialBloc.add(const FinancialRefreshed());
     }
   }
 
   Widget _body() {
     switch (_segment) {
       case 1:
-        return const _ObjectsBody();
+        return BlocProvider.value(
+          value: _branchesBloc,
+          child: const _ObjectsView(),
+        );
       case 2:
-        return const _WarehouseBody();
+        return BlocProvider.value(
+          value: _warehouseBloc,
+          child: const _WarehouseView(),
+        );
       case 3:
-        return const _NutritionBody();
+        return BlocProvider.value(
+          value: _nutritionBloc,
+          child: const _NutritionView(),
+        );
       default:
-        return const _OverviewBody();
+        return BlocProvider.value(
+          value: _financialBloc,
+          child: const _OverviewView(),
+        );
     }
   }
 
@@ -117,70 +151,98 @@ class _FinancialDashboardScreenState
 }
 
 /// Сегмент «Обзор» — главный финансовый дашборд (P&L) из `GET /dashboard`.
-class _OverviewBody extends ConsumerWidget {
-  const _OverviewBody();
+/// На новой архитектуре: BLoC + get_it.
+class _OverviewView extends StatelessWidget {
+  const _OverviewView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(financialDashboardNotifierProvider);
-    final notifier = ref.read(financialDashboardNotifierProvider.notifier);
-    final data = async.valueOrNull;
+  Widget build(BuildContext context) {
+    final bloc = context.read<FinancialBloc>();
+    return BlocBuilder<FinancialBloc, FinancialState>(
+      builder: (context, state) {
+        void onPeriod(String p) => bloc.add(FinancialPeriodChanged(p));
+        final data = state.data;
 
-    if (data == null) {
-      return async.hasError
-          ? _ErrorView(error: async.error!, onRetry: notifier.refresh)
-          : const Center(child: CircularProgressIndicator());
-    }
+        if (data == null) {
+          if (state.status == FinancialStatus.failure) {
+            return _ErrorView(
+              error: state.error ?? '',
+              onRetry: () => bloc.add(const FinancialRefreshed()),
+            );
+          }
+          return const Center(child: CircularProgressIndicator());
+        }
 
-    return Column(
-      children: [
-        _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-        if (async.isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: RefreshIndicator(
-            color: ThemePalette.accent(context),
-            onRefresh: notifier.refresh,
-            child: _Content(data: data),
-          ),
-        ),
-      ],
+        return Column(
+          children: [
+            _PeriodTabs(period: state.period, onSelected: onPeriod),
+            if (state.isLoading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
+                color: ThemePalette.accent(context),
+                onRefresh: () async => bloc.add(const FinancialRefreshed()),
+                child: _Content(data: data),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
 /// Сегмент «Объекты» — P&L по филиалам (`GET /dashboard/branches`).
-class _ObjectsBody extends ConsumerWidget {
-  const _ObjectsBody();
+/// На новой архитектуре: BLoC + get_it, presentation зависит от domain.
+class _ObjectsView extends StatelessWidget {
+  const _ObjectsView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(branchesDashboardNotifierProvider);
-    final notifier = ref.read(branchesDashboardNotifierProvider.notifier);
-    final data = async.valueOrNull;
+  Widget build(BuildContext context) {
+    final bloc = context.read<BranchesBloc>();
+    return BlocBuilder<BranchesBloc, BranchesState>(
+      builder: (context, state) {
+        void onPeriod(String p) => bloc.add(BranchesPeriodChanged(p));
 
-    if (data == null) {
-      return async.hasError
-          ? _ErrorView(error: async.error!, onRetry: notifier.refresh)
-          : const Center(child: CircularProgressIndicator());
-    }
+        if (state.result == null) {
+          if (state.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Column(
+            children: [
+              _PeriodTabs(period: state.period, onSelected: onPeriod),
+              Expanded(
+                child: _EmptyView(
+                  message: 'branchEmpty'.tr(),
+                  onRetry: () => bloc.add(const BranchesRefreshed()),
+                ),
+              ),
+            ],
+          );
+        }
 
-    return Column(
-      children: [
-        _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-        _BranchChips(
-          objects: data.objects,
-          selectedId: data.selectedId,
-          onSelected: notifier.setBranch,
-        ),
-        if (async.isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: RefreshIndicator(
-            color: ThemePalette.accent(context),
-            onRefresh: notifier.refresh,
-            child: _BranchesContent(data: data),
-          ),
-        ),
-      ],
+        return Column(
+          children: [
+            _PeriodTabs(period: state.period, onSelected: onPeriod),
+            _BranchChips(
+              objects: state.objects,
+              selectedId: state.selectedId,
+              onSelected: (id) => bloc.add(BranchSelected(id)),
+            ),
+            if (state.isLoading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
+                color: ThemePalette.accent(context),
+                onRefresh: () async => bloc.add(const BranchesRefreshed()),
+                child: _BranchesContent(
+                  objects: state.objects,
+                  selectedId: state.selectedId,
+                  money: state.canViewMoney,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -453,6 +515,7 @@ class _Kpi extends StatelessWidget {
     required this.value,
     this.sub,
     this.valueColor,
+    this.accent,
   });
 
   final String label;
@@ -460,9 +523,12 @@ class _Kpi extends StatelessWidget {
   final String? sub;
   final Color? valueColor;
 
+  /// Цвет левой полоски-акцента (как в макете «Сводной»). null — без полоски.
+  final Color? accent;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.all(AppSpacing.sm),
       decoration: BoxDecoration(
         color: ThemePalette.surfaceCard(context),
@@ -493,12 +559,33 @@ class _Kpi extends StatelessWidget {
           if (sub != null)
             Text(
               sub!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: ThemePalette.onSurfaceMuted(context),
               ),
             ),
         ],
       ),
+    );
+    if (accent == null) return card;
+    // Левая цветная полоска-акцент.
+    return Stack(
+      children: [
+        card,
+        Positioned(
+          left: 0,
+          top: 8,
+          bottom: 8,
+          child: Container(
+            width: 3,
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -657,30 +744,42 @@ class _DailyBars extends StatelessWidget {
       (m, d) => d.recognizedRevenue > m ? d.recognizedRevenue : m,
     );
     final muted = ThemePalette.onSurfaceMuted(context);
+    final n = daily.length;
+    // На широких периодах (месяц/год) столбики узкие: подписи сумм над каждым
+    // не помещаются и наезжают друг на друга — показываем их только когда
+    // столбцов немного. Даты тоже прореживаем.
+    final showValues = money && n <= 10;
+    final labelEvery = n <= 16 ? 1 : (n / 10).ceil();
+    final horizontalPad = n > 16 ? 1.0 : 2.0;
+
     return SizedBox(
       height: 130,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          for (final d in daily)
+          for (var i = 0; i < daily.length; i++)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
+                padding: EdgeInsets.symmetric(horizontal: horizontalPad),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Text(
-                      money ? _short(d.recognizedRevenue) : '',
-                      maxLines: 1,
-                      style: TextStyle(fontSize: 8, color: muted),
-                    ),
-                    const SizedBox(height: 2),
+                    if (showValues)
+                      Text(
+                        _short(daily[i].recognizedRevenue),
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.visible,
+                        style: TextStyle(fontSize: 8, color: muted),
+                      ),
+                    if (showValues) const SizedBox(height: 2),
                     Container(
                       height: maxRev <= 0
                           ? 2
-                          : (90 * (d.recognizedRevenue / maxRev)).clamp(2, 90),
+                          : (90 * (daily[i].recognizedRevenue / maxRev))
+                                .clamp(2, 90),
                       decoration: BoxDecoration(
-                        color: d.operatingProfit >= 0
+                        color: daily[i].operatingProfit >= 0
                             ? AppColors.profitGreen
                             : AppColors.dangerRed,
                         borderRadius: const BorderRadius.vertical(
@@ -689,9 +788,17 @@ class _DailyBars extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      _dayLabel(d.date),
-                      style: TextStyle(fontSize: 9, color: muted),
+                    SizedBox(
+                      height: 12,
+                      child: i % labelEvery == 0
+                          ? FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                _dayLabel(daily[i].date),
+                                style: TextStyle(fontSize: 9, color: muted),
+                              ),
+                            )
+                          : null,
                     ),
                   ],
                 ),
@@ -940,64 +1047,68 @@ class _ErrorView extends StatelessWidget {
 /// Инсайт-первый экран: сверху вывод (что/почему/действие), затем KPI и детали.
 /// Режим Менеджер (причины отклонений) / Овнер (только итоги) переключается
 /// мгновенно и меняет глубину деталей.
-class _NutritionBody extends ConsumerStatefulWidget {
-  const _NutritionBody();
+class _NutritionView extends StatefulWidget {
+  const _NutritionView();
 
   @override
-  ConsumerState<_NutritionBody> createState() => _NutritionBodyState();
+  State<_NutritionView> createState() => _NutritionViewState();
 }
 
-class _NutritionBodyState extends ConsumerState<_NutritionBody> {
+class _NutritionViewState extends State<_NutritionView> {
   /// true — Менеджер (видит причины/состав/инспектора), false — Овнер (итоги).
   bool _managerMode = true;
 
   @override
   Widget build(BuildContext context) {
-    final async = ref.watch(nutritionDashboardNotifierProvider);
-    final notifier = ref.read(nutritionDashboardNotifierProvider.notifier);
-    final data = async.valueOrNull;
+    final bloc = context.read<NutritionBloc>();
+    return BlocBuilder<NutritionBloc, NutritionState>(
+      builder: (context, state) {
+        void onPeriod(String p) => bloc.add(NutritionPeriodChanged(p));
+        final data = state.data;
 
-    if (data == null) {
-      if (async.isLoading) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      return Column(
-        children: [
-          _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-          Expanded(
-            child: _EmptyView(
-              message: 'whUnavailable'.tr(),
-              onRetry: notifier.refresh,
+        if (data == null) {
+          if (state.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          return Column(
+            children: [
+              _PeriodTabs(period: state.period, onSelected: onPeriod),
+              Expanded(
+                child: _EmptyView(
+                  message: 'whUnavailable'.tr(),
+                  onRetry: () => bloc.add(const NutritionRefreshed()),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.md,
+                AppSpacing.sm,
+                AppSpacing.md,
+                0,
+              ),
+              child: _ModeToggle(
+                managerMode: _managerMode,
+                onChanged: (v) => setState(() => _managerMode = v),
+              ),
             ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppSpacing.md,
-            AppSpacing.sm,
-            AppSpacing.md,
-            0,
-          ),
-          child: _ModeToggle(
-            managerMode: _managerMode,
-            onChanged: (v) => setState(() => _managerMode = v),
-          ),
-        ),
-        _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-        if (async.isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: RefreshIndicator(
-            color: ThemePalette.accent(context),
-            onRefresh: notifier.refresh,
-            child: _NutritionContent(data: data, managerMode: _managerMode),
-          ),
-        ),
-      ],
+            _PeriodTabs(period: state.period, onSelected: onPeriod),
+            if (state.isLoading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
+                color: ThemePalette.accent(context),
+                onRefresh: () async => bloc.add(const NutritionRefreshed()),
+                child: _NutritionContent(data: data, managerMode: _managerMode),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1066,27 +1177,40 @@ class _NutritionContent extends StatelessWidget {
     String m(double v) => money ? formatTenge(v) : '—';
 
     final daysWithData = data.daily.where((d) => d.mealsServed > 0).toList();
-    final verdict = _NutritionVerdict.compute(data, daysWithData);
+
+    final breakfast = data.mealByCode('BREAKFAST');
+    final lunch = data.mealByCode('LUNCH');
+    final dinner = data.mealByCode('DINNER');
+
+    String mealSub(NutritionMealPeriod? mp) =>
+        mp == null ? '' : formatPercent(mp.sharePct);
+    Widget mealKpi(String fallback, NutritionMealPeriod? mp) => _Kpi(
+          label: (mp != null && mp.name.isNotEmpty) ? mp.name : fallback.tr(),
+          value: m(mp?.totalCost ?? 0),
+          sub: mealSub(mp),
+        );
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
       children: [
-        // 1. ГЛАВНЫЙ ВЫВОД: что произошло / почему / что делать.
-        _NutritionHeadline(verdict: verdict),
-        const SizedBox(height: AppSpacing.md),
-        // 2. KPI: общие расходы, СРМ, прогноз — сумма + тренд.
+        // 1. KPI-ряд (как в «Сводной»): всего · завтрак/обед/ужин (доля) ·
+        //    СРМ ужина · прогноз.
         _KpiWrap(
           cards: [
             _Kpi(
               label: 'nutTotal'.tr(),
               value: m(s.totalCost),
               sub: '${'nutVsPrev'.tr()} ${_changeLabel(s.changePct)}',
-              valueColor: money ? _changeColor(s.changePct, lessIsGood: true) : null,
+              valueColor:
+                  money ? _changeColor(s.changePct, lessIsGood: true) : null,
+              accent: AppColors.profitGreen,
             ),
+            mealKpi('nutBreakfast', breakfast),
+            mealKpi('nutLunch', lunch),
+            mealKpi('nutDinner', dinner),
             _Kpi(
-              label: 'nutCpm'.tr(),
-              value: m(s.averageCostPerMeal),
-              sub: '${'nutVsPrev'.tr()} ${_changeLabel(s.costPerMealChangePct)}',
+              label: 'nutCpmDinner'.tr(),
+              value: m(dinner?.averageCostPerMeal ?? s.averageCostPerMeal),
             ),
             if (data.forecast != null)
               _Kpi(
@@ -1097,24 +1221,22 @@ class _NutritionContent extends StatelessWidget {
                     'pct': formatPercent(data.forecast!.confidencePct),
                   },
                 ),
+                accent: AppColors.warningAmber,
               ),
           ],
         ),
 
-        // 3. Детали — глубина зависит от режима.
-        if (managerMode) ...[
-          if (data.composition.where((c) => c.actualPct > 0).isNotEmpty) ...[
-            const SizedBox(height: AppSpacing.md),
-            _Section(
-              title: 'nutComposition'.tr(),
-              child: Column(
-                children: [
-                  for (final c in data.composition.where((c) => c.actualPct > 0))
-                    _CompositionRow(item: c),
-                ],
-              ),
-            ),
-          ],
+        // 2. Таблица по дням: приёмы + СРМ ужина + затраты + Δ + статус.
+        if (daysWithData.isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.md),
+          _Section(
+            title: 'nutByDay'.tr(),
+            child: _NutritionDailyTable(data: data, days: daysWithData, money: money),
+          ),
+        ],
+
+        // 3. Плашки INSPECTOR / ANALYST (только в режиме Менеджер).
+        if (managerMode)
           for (final group in ['inspector', 'analyst'])
             if (data.insights.any((i) => i.source == group)) ...[
               const SizedBox(height: AppSpacing.md),
@@ -1124,326 +1246,240 @@ class _NutritionContent extends StatelessWidget {
                     data.insights.where((i) => i.source == group).toList(),
               ),
             ],
-        ],
-
-        if (daysWithData.isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.md),
-          _Section(
-            title: 'nutByDay'.tr(),
-            child: _NutritionDailyTable(days: daysWithData, money: money),
-          ),
-        ],
         const SizedBox(height: AppSpacing.md),
       ],
     );
   }
 }
 
-/// Готовый вывод по питанию: статус, самый затратный день, причина, действие.
-/// Считается на фронте из дневных данных + целевых долей состава, чтобы
-/// пользователь за 30 секунд видел «что/почему/что делать» без чтения таблиц.
-class _NutritionVerdict {
-  const _NutritionVerdict({
-    required this.status,
-    this.worstDay,
-    this.worstDeviationPct = 0,
-    this.causeGroupLabel,
-    this.causeActualPct = 0,
-    this.causeTargetPct = 0,
-  });
-
-  final String status; // normal | warning | imbalanced
-  final NutritionDay? worstDay;
-  final double worstDeviationPct;
-  final String? causeGroupLabel;
-  final double causeActualPct;
-  final double causeTargetPct;
-
-  bool get hasIssue => worstDay != null && status != 'normal';
-
-  static _NutritionVerdict compute(
-    NutritionDashboard data,
-    List<NutritionDay> days,
-  ) {
-    if (days.isEmpty) {
-      return const _NutritionVerdict(status: 'normal');
-    }
-    // Самый затратный день — максимальное положительное отклонение от среднего.
-    final worst = days.reduce(
-      (a, b) => b.deviationPct > a.deviationPct ? b : a,
-    );
-
-    // Причина: целевые доли food_group из composition[]; находим группу с
-    // наибольшим превышением факта над нормой в этот день.
-    final targets = <String, NutritionComposition>{
-      for (final c in data.composition) c.foodGroup: c,
-    };
-    String? causeLabel;
-    double causeActual = 0, causeTarget = 0, maxGap = 0;
-    worst.composition.forEach((group, actual) {
-      final t = targets[group];
-      final target = t?.targetPct ?? 0;
-      final gap = actual - target;
-      if (gap > maxGap) {
-        maxGap = gap;
-        causeActual = actual;
-        causeTarget = target;
-        causeLabel = (t != null && t.label.isNotEmpty)
-            ? t.label
-            : _foodGroupLabel(group);
-      }
-    });
-
-    return _NutritionVerdict(
-      status: worst.status,
-      worstDay: worst,
-      worstDeviationPct: worst.deviationPct,
-      causeGroupLabel: causeLabel,
-      causeActualPct: causeActual,
-      causeTargetPct: causeTarget,
-    );
-  }
-}
-
-/// Плашка-вывод сверху экрана питания.
-class _NutritionHeadline extends StatelessWidget {
-  const _NutritionHeadline({required this.verdict});
-
-  final _NutritionVerdict verdict;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _statusColor(verdict.status) ?? AppColors.profitGreen;
-    final ok = !verdict.hasIssue;
-    final statusWord = ok
-        ? 'nutStatusOk'.tr()
-        : (verdict.status == 'imbalanced'
-              ? 'nutStatusImbalanced'.tr()
-              : 'nutStatusWarning'.tr());
-    final dateLabel =
-        verdict.worstDay == null ? '' : _dayMonth(verdict.worstDay!.date);
-
-    return Container(
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      padding: const EdgeInsets.all(AppSpacing.md),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                ok ? Icons.check_circle_outline : Icons.warning_amber_rounded,
-                size: 18,
-                color: color,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                statusWord.toUpperCase(),
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: color, fontWeight: FontWeight.w800),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xs),
-          if (ok)
-            Text(
-              'nutVerdictOk'.tr(),
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            )
-          else ...[
-            Text(
-              'nutVerdictWorst'.tr(
-                namedArgs: {
-                  'date': dateLabel,
-                  'delta': _deltaLabel(verdict.worstDeviationPct),
-                },
-              ),
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            if (verdict.causeGroupLabel != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                'nutVerdictCause'.tr(
-                  namedArgs: {
-                    'group': verdict.causeGroupLabel!.toLowerCase(),
-                    'actual': formatPercent(verdict.causeActualPct),
-                    'target': formatPercent(verdict.causeTargetPct),
-                  },
-                ),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: ThemePalette.onSurfaceMuted(context),
-                ),
-              ),
-            ],
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Icon(Icons.arrow_forward, size: 16, color: color),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    'nutVerdictAction'.tr(namedArgs: {'date': dateLabel}),
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: color,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-Color _changeColor(double pct, {bool lessIsGood = false}) {
-  if (pct == 0) return AppColors.textSecondary;
-  final good = lessIsGood ? pct < 0 : pct > 0;
-  return good ? AppColors.profitGreen : AppColors.dangerRed;
-}
-
-/// Строка состава: доля факт vs цель, отклонение цветом по статусу.
-class _CompositionRow extends StatelessWidget {
-  const _CompositionRow({required this.item});
-
-  final NutritionComposition item;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = _statusColor(item.status) ?? ThemePalette.accent(context);
-    final label = item.label.isNotEmpty
-        ? item.label
-        : _foodGroupLabel(item.foodGroup);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall,
-                ),
-              ),
-              Text(
-                '${formatPercent(item.actualPct)} / ${formatPercent(item.targetPct)}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Stack(
-              children: [
-                LinearProgressIndicator(
-                  value: (item.actualPct / 100).clamp(0.0, 1.0),
-                  minHeight: 6,
-                  backgroundColor: ThemePalette.border(context),
-                  valueColor: AlwaysStoppedAnimation(color),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Таблица по дням: дата · затраты дня · СРМ · Δ к ср. · статус.
 class _NutritionDailyTable extends StatelessWidget {
-  const _NutritionDailyTable({required this.days, required this.money});
+  const _NutritionDailyTable({
+    required this.data,
+    required this.days,
+    required this.money,
+  });
 
+  final NutritionDashboard data;
   final List<NutritionDay> days;
   final bool money;
+
+  String _m(double v) => money ? formatTenge(v) : '—';
+
+  double _sumMeal(String code) {
+    var t = 0.0;
+    for (final d in days) {
+      t += d.mealByCode(code)?.totalCost ?? 0;
+    }
+    return t;
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final muted = ThemePalette.onSurfaceMuted(context);
-    Widget head(String key, int flex, {TextAlign align = TextAlign.right}) =>
-        Expanded(
+
+    // Цвета групп приёмов (как в макете): завтрак — лайм, обед — голубой,
+    // ужин — красный, итог — лайм.
+    final lime = AppColors.profitGreen;
+    const blue = Color(0xFF4AA8FF);
+    final red = AppColors.dangerRed;
+    final border = ThemePalette.border(context);
+
+    // Флексы колонок — общие для шапки и строк, чтобы всё было выровнено.
+    const fDay = 22, fSum = 18, fCpm = 15, fTotal = 20, fDelta = 13, fStatus = 20;
+    const fTotalGroup = fCpm + fTotal + fDelta + fStatus;
+
+    Widget txt(String s, {Color? color, FontWeight? w, TextStyle? base}) => Text(
+          s,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: (base ?? theme.textTheme.bodySmall)
+              ?.copyWith(color: color, fontWeight: w),
+        );
+
+    Widget cellRight(int flex, Widget child) =>
+        Expanded(flex: flex, child: Align(alignment: Alignment.centerRight, child: child));
+    Widget cellLeft(int flex, Widget child) =>
+        Expanded(flex: flex, child: Align(alignment: Alignment.centerLeft, child: child));
+    Widget cellCenter(int flex, Widget child) =>
+        Expanded(flex: flex, child: Align(alignment: Alignment.center, child: child));
+
+    Widget money(double v, {bool bold = false}) =>
+        txt(_m(v), w: bold ? FontWeight.w700 : FontWeight.w400);
+
+    Widget group(int flex, String key, Color dot) => Expanded(
           flex: flex,
-          child: Text(
-            key.tr(),
-            textAlign: align,
-            style: theme.textTheme.labelSmall?.copyWith(color: muted),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: txt(key.tr(),
+                    color: muted, w: FontWeight.w700,
+                    base: theme.textTheme.labelSmall),
+              ),
+            ],
           ),
         );
 
-    return Column(
-      children: [
-        Row(
+    Widget headTxt(String key) => txt(key.tr(),
+        color: muted, base: theme.textTheme.labelSmall);
+
+    final dinnerAvg = data.mealByCode('DINNER')?.averageCostPerMeal ??
+        data.summary.averageCostPerMeal;
+
+    Widget dataRowFor(NutritionDay d, bool stripe) {
+      return Container(
+        color: stripe
+            ? ThemePalette.onSurface(context).withValues(alpha: 0.03)
+            : null,
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: AppSpacing.xs),
+        child: Row(
           children: [
-            head('nutColDay', 3, align: TextAlign.left),
-            head('nutColTotal', 4),
-            head('nutColCpm', 3),
-            head('nutColDelta', 2),
+            cellLeft(fDay, txt(_dayRu(d.date))),
+            cellRight(fSum, money(d.mealByCode('BREAKFAST')?.totalCost ?? 0)),
+            cellRight(fSum, money(d.mealByCode('LUNCH')?.totalCost ?? 0)),
+            cellRight(fSum, money(d.mealByCode('DINNER')?.totalCost ?? 0)),
+            cellRight(fCpm, money(d.mealByCode('DINNER')?.averageCostPerMeal ?? 0)),
+            cellRight(fTotal, money(d.totalCost, bold: true)),
+            cellRight(
+              fDelta,
+              txt(_deltaLabel(d.deviationPct),
+                  color: _deltaColor(d.deviationPct), w: FontWeight.w700),
+            ),
+            cellCenter(fStatus, _StatusPill(status: d.status)),
           ],
         ),
-        const SizedBox(height: 4),
-        for (final d in days)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
-            child: Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    _dayMonth(d.date),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                Expanded(
-                  flex: 4,
-                  child: Text(
-                    money ? formatTenge(d.totalCost) : '—',
-                    textAlign: TextAlign.right,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                Expanded(
-                  flex: 3,
-                  child: Text(
-                    money ? formatTenge(d.averageCostPerMeal) : '—',
-                    textAlign: TextAlign.right,
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
-                Expanded(
-                  flex: 2,
-                  child: Text(
-                    _deltaLabel(d.deviationPct),
-                    textAlign: TextAlign.right,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: _deltaColor(d.deviationPct),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+      );
+    }
+
+    final table = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Уровень 1 — группы приёмов с цветными точками.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Row(
+            children: [
+              const Expanded(flex: fDay, child: SizedBox()),
+              group(fSum, 'nutGrpBreakfast', lime),
+              group(fSum, 'nutGrpLunch', blue),
+              group(fSum, 'nutGrpDinner', red),
+              group(fTotalGroup, 'nutGrpTotal', lime),
+            ],
           ),
+        ),
+        const SizedBox(height: 4),
+        // Уровень 2 — подписи колонок.
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
+          child: Row(
+            children: [
+              cellLeft(fDay, headTxt('nutColDay')),
+              cellRight(fSum, headTxt('nutColSum')),
+              cellRight(fSum, headTxt('nutColLunch')),
+              cellRight(fSum, headTxt('nutColSum')),
+              cellRight(fCpm, headTxt('nutColCpm')),
+              cellRight(fTotal, headTxt('nutColTotal')),
+              cellRight(fDelta, headTxt('nutColDelta')),
+              cellCenter(fStatus, headTxt('nutColStatus')),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Divider(height: 1, color: border),
+        for (var i = 0; i < days.length; i++) dataRowFor(days[i], i.isOdd),
+        Divider(height: 1, color: border),
+        // ИТОГО.
+        Container(
+          color: ThemePalette.accent(context).withValues(alpha: 0.06),
+          padding: const EdgeInsets.symmetric(vertical: 9, horizontal: AppSpacing.xs),
+          child: Row(
+            children: [
+              cellLeft(fDay, txt('nutTotalRow'.tr(), w: FontWeight.w700)),
+              cellRight(fSum, money(_sumMeal('BREAKFAST'), bold: true)),
+              cellRight(fSum, money(_sumMeal('LUNCH'), bold: true)),
+              cellRight(fSum, money(_sumMeal('DINNER'), bold: true)),
+              cellRight(fCpm, money(dinnerAvg, bold: true)),
+              cellRight(fTotal, money(data.summary.totalCost, bold: true)),
+              const Expanded(flex: fDelta, child: SizedBox()),
+              cellCenter(
+                fStatus,
+                txt('nutDaysCount'.tr(namedArgs: {'n': '${days.length}'}),
+                    color: muted, base: theme.textTheme.labelSmall),
+              ),
+            ],
+          ),
+        ),
       ],
     );
+
+    // Тянем на всю ширину области (веб заполняет экран); на узком телефоне
+    // фиксируем минимум и включаем горизонтальный скролл.
+    return LayoutBuilder(
+      builder: (context, c) {
+        const minW = 680.0;
+        final fits = c.maxWidth >= minW;
+        final content = SizedBox(width: fits ? c.maxWidth : minW, child: table);
+        if (fits) return content;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: content,
+        );
+      },
+    );
   }
+}
+
+/// Пилюля статуса дня: В НОРМЕ (лайм) / Внимание (амбер) / ДИСБАЛАНС (красный).
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(status) ?? ThemePalette.onSurfaceMuted(context);
+    final label = switch (status) {
+      'normal' => 'nutStatusOk',
+      'warning' => 'nutStatusWarning',
+      'imbalanced' => 'nutStatusImbalanced',
+      _ => 'nutStatusOk',
+    }
+        .tr();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+      ),
+      child: Text(
+        label.toUpperCase(),
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+/// Дата «1 янв» (день + сокр. месяц) для таблицы питания.
+String _dayRu(String date) {
+  final d = DateTime.tryParse(date);
+  if (d == null) return date;
+  const months = [
+    'янв', 'фев', 'мар', 'апр', 'май', 'июн',
+    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+  ];
+  final mi = (d.month - 1).clamp(0, 11);
+  return '${d.day} ${months[mi]}';
 }
 
 /// Блок инсайтов INSPECTOR/ANALYST (текст бэка не пересчитываем — гайд §20).
@@ -1459,10 +1495,11 @@ class _InsightsCard extends StatelessWidget {
     final isInspector = source == 'inspector';
     final accent = isInspector ? AppColors.dangerRed : ThemePalette.accent(context);
     return Container(
+      // Цветная рамка/тинт как в макете (красный INSPECTOR / лаймовый ANALYST).
       decoration: BoxDecoration(
-        color: ThemePalette.surfaceCard(context),
+        color: accent.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-        border: Border.all(color: ThemePalette.border(context)),
+        border: Border.all(color: accent.withValues(alpha: 0.5)),
       ),
       padding: const EdgeInsets.all(AppSpacing.sm),
       child: Column(
@@ -1532,60 +1569,57 @@ Color _deltaColor(double pct) {
   return AppColors.warningAmber;
 }
 
-String _dayMonth(String date) {
-  final d = DateTime.tryParse(date);
-  if (d == null) return date;
-  final dd = d.day.toString().padLeft(2, '0');
-  final mm = d.month.toString().padLeft(2, '0');
-  return '$dd.$mm';
+Color _changeColor(double pct, {bool lessIsGood = false}) {
+  if (pct == 0) return AppColors.textSecondary;
+  final good = lessIsGood ? pct < 0 : pct > 0;
+  return good ? AppColors.profitGreen : AppColors.dangerRed;
 }
 
-/// Подпись food_group (`meat_fish`, `dairy`…).
-String _foodGroupLabel(String key) {
-  final label = 'foodGroup.$key'.tr();
-  return label == 'foodGroup.$key' ? key : label;
-}
-
-/// Сегмент «Склад» — складской финансовый дашборд (`GET /dashboard/warehouse`).
-class _WarehouseBody extends ConsumerWidget {
-  const _WarehouseBody();
+/// Сегмент «Склад» — складской дашборд (`GET /dashboard/warehouse`).
+/// Эталон новой архитектуры: BLoC + get_it, presentation зависит от domain.
+class _WarehouseView extends StatelessWidget {
+  const _WarehouseView();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(warehouseDashboardNotifierProvider);
-    final notifier = ref.read(warehouseDashboardNotifierProvider.notifier);
-    final data = async.valueOrNull;
+  Widget build(BuildContext context) {
+    final bloc = context.read<WarehouseBloc>();
+    return BlocBuilder<WarehouseBloc, WarehouseState>(
+      builder: (context, state) {
+        void onPeriod(String p) => bloc.add(WarehousePeriodChanged(p));
+        final data = state.data;
 
-    if (data == null) {
-      if (async.isLoading) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      // best-effort: ошибка/недоступно/нет данных — мягкое состояние, не краш.
-      return Column(
-        children: [
-          _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-          Expanded(
-            child: _EmptyView(
-              message: 'whUnavailable'.tr(),
-              onRetry: notifier.refresh,
+        if (data == null) {
+          if (state.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          // best-effort: недоступно/нет данных — мягкое состояние, не краш.
+          return Column(
+            children: [
+              _PeriodTabs(period: state.period, onSelected: onPeriod),
+              Expanded(
+                child: _EmptyView(
+                  message: 'whUnavailable'.tr(),
+                  onRetry: () => bloc.add(const WarehouseRefreshed()),
+                ),
+              ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _PeriodTabs(period: state.period, onSelected: onPeriod),
+            if (state.isLoading) const LinearProgressIndicator(minHeight: 2),
+            Expanded(
+              child: RefreshIndicator(
+                color: ThemePalette.accent(context),
+                onRefresh: () async => bloc.add(const WarehouseRefreshed()),
+                child: _WarehouseContent(data: data),
+              ),
             ),
-          ),
-        ],
-      );
-    }
-
-    return Column(
-      children: [
-        _PeriodTabs(period: notifier.period, onSelected: notifier.setPeriod),
-        if (async.isLoading) const LinearProgressIndicator(minHeight: 2),
-        Expanded(
-          child: RefreshIndicator(
-            color: ThemePalette.accent(context),
-            onRefresh: notifier.refresh,
-            child: _WarehouseContent(data: data),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -1779,7 +1813,7 @@ class _BudgetVarianceRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  _expenseLabel(item.category),
+                  _warehouseCategoryLabel(item.category),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall,
@@ -1995,9 +2029,9 @@ class _SegmentTabs extends StatelessWidget {
   final ValueChanged<int> onSelected;
 
   static const _items = [
+    (3, 'finSegmentNutrition'),
     (0, 'finSegmentOverview'),
     (1, 'finSegmentObjects'),
-    (3, 'finSegmentNutrition'),
     (2, 'finSegmentWarehouse'),
   ];
 
@@ -2145,14 +2179,32 @@ class _Chip extends StatelessWidget {
 
 /// Список полноэкранных карточек P&L по объектам под выбранный чип.
 class _BranchesContent extends StatelessWidget {
-  const _BranchesContent({required this.data});
+  const _BranchesContent({
+    required this.objects,
+    required this.selectedId,
+    required this.money,
+  });
 
-  final BranchesDashboardData data;
+  final List<ObjectFinance> objects;
+  final int? selectedId;
+  final bool money;
+
+  /// Карточки под выбранный чип: «Все» → отдельные кейтеринги (карусель),
+  /// иначе — выбранный объект. Фолбэк на агрегат, если отдельных нет.
+  List<ObjectFinance> get _cards {
+    if (selectedId != null) {
+      return objects.where((o) => o.id == selectedId).toList();
+    }
+    final individual = objects.where((o) => !o.isAll).toList();
+    return individual.isNotEmpty
+        ? individual
+        : objects; // только агрегат — показываем его
+  }
 
   @override
   Widget build(BuildContext context) {
-    final visible = data.visible;
-    if (visible.isEmpty) {
+    final cards = _cards;
+    if (cards.isEmpty) {
       return ListView(
         children: [
           Padding(
@@ -2170,103 +2222,185 @@ class _BranchesContent extends StatelessWidget {
         ],
       );
     }
-    return ListView(
+
+    // Веб/десктоп — сетка карточек во всю ширину; телефон — горизонтальная
+    // карусель (видно ~1.5 карточки, как в макете).
+    if (context.isCompact && cards.length > 1) {
+      return LayoutBuilder(
+        builder: (context, c) {
+          final cardW = c.maxWidth * 0.82;
+          return ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(AppSpacing.md),
+            children: [
+              for (final o in cards)
+                Container(
+                  width: cardW,
+                  margin: const EdgeInsets.only(right: AppSpacing.md),
+                  alignment: Alignment.topCenter,
+                  child: _BranchCard(object: o, money: money),
+                ),
+            ],
+          );
+        },
+      );
+    }
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(AppSpacing.md),
-      children: [
-        for (final o in visible) ...[
-          _BranchCard(object: o, money: data.canViewMoney),
-          const SizedBox(height: AppSpacing.md),
-        ],
-      ],
+      child: LayoutBuilder(
+        builder: (context, c) {
+          // На широком экране — несколько карточек в ряд; одна карточка → одна
+          // колонка. Карточки в ряду — равной высоты (IntrinsicHeight).
+          final perRow = context.isExpanded
+              ? (c.maxWidth / 380).floor().clamp(1, 3)
+              : 1;
+          const gap = AppSpacing.md;
+
+          if (perRow == 1) {
+            return Column(
+              children: [
+                for (final o in cards) ...[
+                  _BranchCard(object: o, money: money),
+                  const SizedBox(height: gap),
+                ],
+              ],
+            );
+          }
+
+          final rows = <Widget>[];
+          for (var i = 0; i < cards.length; i += perRow) {
+            final slice = cards.skip(i).take(perRow).toList();
+            rows.add(IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (var j = 0; j < perRow; j++) ...[
+                    if (j > 0) const SizedBox(width: gap),
+                    Expanded(
+                      child: j < slice.length
+                          ? _BranchCard(
+                              object: slice[j], money: money, stretch: true)
+                          : const SizedBox(),
+                    ),
+                  ],
+                ],
+              ),
+            ));
+            rows.add(const SizedBox(height: gap));
+          }
+          return Column(children: rows);
+        },
+      ),
     );
   }
 }
 
-/// Полноэкранная карточка P&L одного объекта (или агрегата «All»).
+/// Карточка P&L одного объекта кейтеринга (макет «Дашборд»): выручка,
+/// себестоимость, список расходов и чистая прибыль (бирюзовая).
 class _BranchCard extends StatelessWidget {
-  const _BranchCard({required this.object, required this.money});
+  const _BranchCard({
+    required this.object,
+    required this.money,
+    this.stretch = false,
+  });
 
   final ObjectFinance object;
   final bool money;
 
+  /// Растянуть карточку на всю высоту ряда (для веб-сетки равной высоты) и
+  /// прижать «Чистую прибыль» к низу.
+  final bool stretch;
+
+  /// Бирюзовый акцент чистой прибыли из макета.
+  static const _netTeal = Color(0xFF4FD1B5);
+
+  /// Фиолетовая точка-маркер кейтеринга из макета.
+  static const _dotViolet = Color(0xFF8B5CF6);
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     String m(double v) => money ? formatTenge(v) : '—';
     String sm(double v) => money ? formatSignedTenge(v) : '—';
 
-    final title = object.isAll ? 'branchAll'.tr() : object.name;
+    final title = (object.isAll ? 'branchAll'.tr() : object.name).toUpperCase();
     final expenses = [...object.expensesByCategory.entries]
       ..sort((a, b) => b.value.compareTo(a.value));
+    final netColor = money
+        ? (object.netProfit >= 0 ? _netTeal : AppColors.dangerRed)
+        : ThemePalette.onSurface(context);
 
-    return _Section(
-      title: title,
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: ThemePalette.surfaceCard(context),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+        border: Border.all(color: ThemePalette.border(context), width: 0.5),
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: stretch ? MainAxisSize.max : MainAxisSize.min,
         children: [
-          _Line(
-            label: 'branchRevenue'.tr(),
-            value: m(object.revenue),
-            hint: 'branchOrdersCount'.tr(
-              namedArgs: {'count': '${object.ordersCount}'},
-            ),
+          // Заголовок: фиолетовая точка + имя кейтеринга.
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: _dotViolet,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: AppSpacing.sm),
+          _Line(label: 'branchRevenue'.tr(), value: m(object.revenue)),
           _Line(label: 'branchCogs'.tr(), value: m(object.cogs)),
-          _Line(
-            label: 'branchGrossProfit'.tr(),
-            value: sm(object.grossProfit),
-            hint: formatPercent(object.grossMarginPct),
-          ),
           const Divider(height: AppSpacing.lg),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
               'branchExpenses'.tr(),
-              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              style: theme.textTheme.labelMedium?.copyWith(
                 color: ThemePalette.onSurfaceMuted(context),
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
+          const SizedBox(height: AppSpacing.xs),
           for (final e in expenses.where((e) => e.value > 0))
             _Line(label: _expenseLabel(e.key), value: m(e.value)),
-          _Line(label: 'branchExpensesTotal'.tr(), value: m(object.expensesTotal)),
-          if (object.isAll && (object.unallocatedOpex ?? 0) > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'branchUnallocatedHint'.tr(),
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: ThemePalette.onSurfaceMuted(context),
-                      ),
-                    ),
-                  ),
-                  Text(
-                    m(object.unallocatedOpex!),
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: ThemePalette.onSurfaceMuted(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          if (stretch) const Spacer(),
           const Divider(height: AppSpacing.lg),
           Row(
             children: [
               Expanded(
                 child: Text(
                   'branchNetProfit'.tr(),
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
               Text(
                 sm(object.netProfit),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: money ? _profitColor(object.netProfit) : null,
+                  color: netColor,
                 ),
               ),
             ],

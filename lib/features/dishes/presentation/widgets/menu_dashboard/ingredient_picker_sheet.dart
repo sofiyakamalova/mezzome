@@ -1,14 +1,14 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/features/dishes/data/models/ingredient_catalog_model.dart';
 import 'package:mezzome/features/dishes/data/repository/menu_dashboard_repository.dart';
 
 /// Лист выбора ингредиента из справочника кухни. Возвращает выбранный
 /// [IngredientCatalogItem] (или `null`, если закрыли без выбора).
-class IngredientPickerSheet extends ConsumerStatefulWidget {
+class IngredientPickerSheet extends StatefulWidget {
   const IngredientPickerSheet({super.key});
 
   static Future<IngredientCatalogItem?> show(BuildContext context) {
@@ -22,12 +22,19 @@ class IngredientPickerSheet extends ConsumerStatefulWidget {
   }
 
   @override
-  ConsumerState<IngredientPickerSheet> createState() =>
-      _IngredientPickerSheetState();
+  State<IngredientPickerSheet> createState() => _IngredientPickerSheetState();
 }
 
-class _IngredientPickerSheetState extends ConsumerState<IngredientPickerSheet> {
+class _IngredientPickerSheetState extends State<IngredientPickerSheet> {
   String _query = '';
+  late Future<List<IngredientCatalogItem>> _future =
+      sl<MenuDashboardRepository>().loadIngredientCatalog();
+
+  void _reload() {
+    setState(() {
+      _future = sl<MenuDashboardRepository>().loadIngredientCatalog();
+    });
+  }
 
   List<IngredientCatalogItem> _filter(List<IngredientCatalogItem> items) {
     final q = _query.trim().toLowerCase();
@@ -37,7 +44,6 @@ class _IngredientPickerSheetState extends ConsumerState<IngredientPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final catalog = ref.watch(ingredientCatalogProvider);
     final height = MediaQuery.sizeOf(context).height * 0.8;
 
     return Padding(
@@ -101,13 +107,16 @@ class _IngredientPickerSheetState extends ConsumerState<IngredientPickerSheet> {
               ),
               const SizedBox(height: AppSpacing.xs),
               Expanded(
-                child: catalog.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (_, _) => _ErrorState(
-                    onRetry: () => ref.invalidate(ingredientCatalogProvider),
-                  ),
-                  data: (items) {
+                child: FutureBuilder<List<IngredientCatalogItem>>(
+                  future: _future,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return _ErrorState(onRetry: _reload);
+                    }
+                    final items = snapshot.data ?? const [];
                     final filtered = _filter(items);
                     if (filtered.isEmpty) {
                       return Center(

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
-import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
+import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 
 /// Визуальный статус ячейки меню-борда (как в прототипе: точка-индикатор).
 enum GridCellStatus {

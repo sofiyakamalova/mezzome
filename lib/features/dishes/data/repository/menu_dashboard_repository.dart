@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/network/dio_error_utils.dart';
-import 'package:mezzome/core/network/dio_provider.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/features/dishes/data/api/ingredients_api.dart';
 import 'package:mezzome/features/dishes/data/api/production_plans_api.dart';
@@ -522,26 +520,3 @@ class MenuDashboardRepository {
     return draft;
   }
 }
-
-final technicalCardsApiProvider = Provider<TechnicalCardsApi>((ref) {
-  return TechnicalCardsApi(ref.watch(dioProvider));
-});
-
-final ingredientsApiProvider = Provider<IngredientsApi>((ref) {
-  return IngredientsApi(ref.watch(dioProvider));
-});
-
-final menuDashboardRepositoryProvider = Provider<MenuDashboardRepository>((ref) {
-  return MenuDashboardRepository(
-    dishesRepository: ref.watch(dishesRepositoryProvider),
-    technicalCardsApi: ref.watch(technicalCardsApiProvider),
-    productionPlansApi: ref.watch(productionPlansApiProvider),
-    ingredientsApi: ref.watch(ingredientsApiProvider),
-  );
-});
-
-/// Справочник ингредиентов кухни — кэшируется на сессию (источник для пикера).
-final ingredientCatalogProvider =
-    FutureProvider<List<IngredientCatalogItem>>((ref) {
-  return ref.watch(menuDashboardRepositoryProvider).loadIngredientCatalog();
-});

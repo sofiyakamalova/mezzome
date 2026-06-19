@@ -1,18 +1,19 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/constants/app_colors.dart';
 import 'package:mezzome/core/constants/app_spacing.dart';
+import 'package:mezzome/core/di/locator.dart';
 import 'package:mezzome/core/l10n/weekday_labels.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
 import 'package:mezzome/core/widgets/app_flushbar.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
-import 'package:mezzome/features/dishes/data/models/production_plan_grid_model.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
+import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/providers/menu_dashboard_notifier.dart';
-import 'package:mezzome/features/dishes/presentation/providers/production_grid_notifier.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
 import 'package:mezzome/features/dishes/presentation/screens/tech_card_page.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/day_menu_list.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/menu_dashboard_app_bar_title.dart';
@@ -34,26 +35,35 @@ enum _MenuViewMode {
 /// «день» — лента дней недели + меню одного дня сгруппировано по категориям;
 /// «неделя» — матрица «категория × день» за 7 дней. Данные грузятся на неделю.
 /// Тумблер режима — в AppBar. Тап по блюду → техкарта снизу.
-class DishesScreen extends ConsumerStatefulWidget {
+class DishesScreen extends StatefulWidget {
   const DishesScreen({super.key});
 
   @override
-  ConsumerState<DishesScreen> createState() => _DishesScreenState();
+  State<DishesScreen> createState() => _DishesScreenState();
 }
 
-class _DishesScreenState extends ConsumerState<DishesScreen> {
+class _DishesScreenState extends State<DishesScreen> {
   /// Текущий режим показа. По умолчанию — один день.
   _MenuViewMode _viewMode = _MenuViewMode.day;
 
   /// Выбранная дата в режиме «день». null → сегодня.
   DateTime? _selectedDate;
 
+  /// Сетка меню-борда на BLoC. Роль берём из сессии (экран открыт авторизованно).
+  late final ProductionGridBloc _gridBloc;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(productionGridNotifierProvider.notifier).load();
-    });
+    final role = sl<AuthSessionCubit>().state.role;
+    _gridBloc = sl<ProductionGridBloc>(param1: role)
+      ..add(const GridLoadRequested());
+  }
+
+  @override
+  void dispose() {
+    _gridBloc.close();
+    super.dispose();
   }
 
   /// Прокручиваемая лента дат: неделя до текущей + ~6 недель вперёд.
@@ -139,21 +149,20 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
     required String signature,
     required bool showFinancials,
   }) async {
-    final notifier = ref.read(menuDashboardNotifierProvider.notifier);
-    await notifier.selectCell(cell);
+    final cubit = sl<MenuDashboardCubit>();
+    await cubit.selectCell(cell);
     if (!mounted) {
       return;
     }
 
-    final dashboard = ref.read(menuDashboardNotifierProvider);
-    if (dashboard.editorDraft == null) {
+    if (cubit.state.editorDraft == null) {
       return;
     }
 
-    final notice = dashboard.techCardLoadNotice;
+    final notice = cubit.state.techCardLoadNotice;
     if (notice != null && context.mounted) {
       AppFlushbar.showInfo(context, notice);
-      notifier.clearTechCardLoadNotice();
+      cubit.clearTechCardLoadNotice();
     }
 
     await TechCardEditorSheet.show(
@@ -162,27 +171,18 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
       showFinancials: showFinancials,
     );
 
-    notifier.closeEditor();
+    cubit.closeEditor();
   }
 
   @override
   Widget build(BuildContext context) {
-    final session = ref.watch(authSessionProvider).valueOrNull;
+    final session = sl<AuthSessionCubit>().state.user;
     final role = session?.role;
     final showFinancials = role != null && canSeeFinancials(role);
     final signature = session == null ? 'MEZZOME' : '${session.name} | MEZZOME';
 
-    final grid = ref.watch(productionGridNotifierProvider);
-    final gridNotifier = ref.read(productionGridNotifierProvider.notifier);
-
-    // Первичная загрузка, если сетка ещё не загружена.
-    if (grid.grid == null && !grid.isLoading && grid.errorMessage == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => gridNotifier.load());
-    }
-
     final isDayView = _viewMode == _MenuViewMode.day;
     final selectedDate = _selectedDate ?? DateFormatUtil.today;
-    final selectedDay = isDayView ? _dayForDate(grid.days, selectedDate) : null;
 
     return Scaffold(
       appBar: AppBar(
@@ -197,83 +197,95 @@ class _DishesScreenState extends ConsumerState<DishesScreen> {
           const SizedBox(width: AppSpacing.xs),
         ],
       ),
-      body: RefreshIndicator(
-        color: ThemePalette.accent(context),
-        onRefresh: gridNotifier.refresh,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: AppSpacing.xs),
-                child: isDayView
-                    ? _DayStrip(
-                        dates: _stripDates(),
-                        selectedDate: selectedDate,
-                        onSelect: (date) {
-                          setState(() => _selectedDate = date);
-                          // Подгружаем неделю выбранной даты (no-op, если та же).
-                          gridNotifier.load(anchorDate: date);
-                        },
-                      )
-                    : WeekRangeSelector(
-                        weekStart: grid.weekStart,
-                        onPrev: () => gridNotifier.shiftWeek(-1),
-                        onNext: () => gridNotifier.shiftWeek(1),
-                        onToday: gridNotifier.goToCurrentWeek,
+      body: BlocBuilder<ProductionGridBloc, ProductionGridState>(
+        bloc: _gridBloc,
+        builder: (context, grid) {
+          final selectedDay =
+              isDayView ? _dayForDate(grid.days, selectedDate) : null;
+          return RefreshIndicator(
+            color: ThemePalette.accent(context),
+            onRefresh: () async =>
+                _gridBloc.add(const GridRefreshRequested()),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
+                    child: isDayView
+                        ? _DayStrip(
+                            dates: _stripDates(),
+                            selectedDate: selectedDate,
+                            onSelect: (date) {
+                              setState(() => _selectedDate = date);
+                              _gridBloc
+                                  .add(GridLoadRequested(anchorDate: date));
+                            },
+                          )
+                        : WeekRangeSelector(
+                            weekStart: grid.weekStart,
+                            onPrev: () =>
+                                _gridBloc.add(const GridWeekShifted(-1)),
+                            onNext: () =>
+                                _gridBloc.add(const GridWeekShifted(1)),
+                            onToday: () => _gridBloc
+                                .add(const GridCurrentWeekRequested()),
+                          ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: ServiceTabs(
+                    selected: grid.service,
+                    onSelected: (svc) =>
+                        _gridBloc.add(GridServiceSelected(svc)),
+                  ),
+                ),
+                if (grid.isLoading || grid.isRefreshing)
+                  const SliverToBoxAdapter(
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+                if (grid.errorMessage != null)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      child: _GridNotice(message: grid.errorMessage!),
+                    ),
+                  ),
+                if (isDayView)
+                  SliverToBoxAdapter(
+                    child: DayMenuList(
+                      rows: grid.rows,
+                      day: selectedDay,
+                      showFinancials: showFinancials,
+                      onItemTap: (item, date) => _openTechCardPage(
+                        item: item,
+                        date: date,
+                        signature: signature,
+                        showFinancials: showFinancials,
                       ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: ServiceTabs(
-                selected: grid.service,
-                onSelected: gridNotifier.selectService,
-              ),
-            ),
-            if (grid.isLoading || grid.isRefreshing)
-              const SliverToBoxAdapter(
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            if (grid.errorMessage != null)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.sm),
-                  child: _GridNotice(message: grid.errorMessage!),
-                ),
-              ),
-            if (isDayView)
-              SliverToBoxAdapter(
-                child: DayMenuList(
-                  rows: grid.rows,
-                  day: selectedDay,
-                  showFinancials: showFinancials,
-                  onItemTap: (item, date) => _openTechCardPage(
-                    item: item,
-                    date: date,
-                    signature: signature,
-                    showFinancials: showFinancials,
+                    ),
+                  )
+                else
+                  SliverToBoxAdapter(
+                    child: ProductionGridTable(
+                      rows: grid.rows,
+                      days: grid.days,
+                      serviceTitle: grid.grid?.serviceTypeTitle,
+                      showFinancials: showFinancials,
+                      onItemTap: (item, date) => _openTechCardPage(
+                        item: item,
+                        date: date,
+                        signature: signature,
+                        showFinancials: showFinancials,
+                      ),
+                    ),
                   ),
-                ),
-              )
-            else
-              SliverToBoxAdapter(
-                child: ProductionGridTable(
-                  rows: grid.rows,
-                  days: grid.days,
-                  serviceTitle: grid.grid?.serviceTypeTitle,
-                  showFinancials: showFinancials,
-                  onItemTap: (item, date) => _openTechCardPage(
-                    item: item,
-                    date: date,
-                    signature: signature,
-                    showFinancials: showFinancials,
-                  ),
-                ),
-              ),
-          ],
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

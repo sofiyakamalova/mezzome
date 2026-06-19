@@ -1,13 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/router/app_routes.dart';
 import 'package:mezzome/domain/user_role.dart';
-import 'package:mezzome/features/auth/data/models/user_model.dart';
-import 'package:mezzome/features/auth/presentation/providers/auth_session_provider.dart';
+import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/auth/presentation/screens/login_screen.dart';
 import 'package:mezzome/features/approvals/presentation/screens/approvals_screen.dart';
 import 'package:mezzome/features/approvals/presentation/screens/my_requests_screen.dart';
@@ -21,14 +21,13 @@ import 'package:mezzome/features/shell/presentation/screens/main_shell_screen.da
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
-final routerProvider = Provider<GoRouter>((ref) {
-  final authSession = ref.watch(authSessionProvider);
-
+GoRouter buildAppRouter(AuthSessionCubit auth) {
   return GoRouter(
     navigatorKey: rootNavigatorKey,
     initialLocation: AppRoutes.login,
     debugLogDiagnostics: kDebugMode,
-    redirect: (context, state) => _redirect(authSession, state),
+    refreshListenable: _GoRouterRefreshStream(auth.stream),
+    redirect: (context, state) => _redirect(auth.state, state),
     routes: [
       GoRoute(
         path: AppRoutes.login,
@@ -115,9 +114,24 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
-});
+}
 
-String? _redirect(AsyncValue<UserModel?> authSession, GoRouterState state) {
+/// Перерисовывает GoRouter при каждом эмите кубита сессии.
+class _GoRouterRefreshStream extends ChangeNotifier {
+  _GoRouterRefreshStream(Stream<dynamic> stream) {
+    _sub = stream.asBroadcastStream().listen((_) => notifyListeners());
+  }
+
+  late final StreamSubscription<dynamic> _sub;
+
+  @override
+  void dispose() {
+    _sub.cancel();
+    super.dispose();
+  }
+}
+
+String? _redirect(AuthSessionState authSession, GoRouterState state) {
   final location = state.matchedLocation;
   final onLogin = location == AppRoutes.login;
 
@@ -125,7 +139,7 @@ String? _redirect(AsyncValue<UserModel?> authSession, GoRouterState state) {
     return onLogin ? null : AppRoutes.login;
   }
 
-  final user = authSession.valueOrNull;
+  final user = authSession.user;
   final isAuthenticated = user != null;
 
   if (!isAuthenticated) {
