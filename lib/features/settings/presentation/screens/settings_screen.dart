@@ -13,6 +13,7 @@ import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/data/models/user_model.dart';
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
+import 'package:mezzome/features/inventory/presentation/create_ingredient_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -27,6 +28,11 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _build(BuildContext context, AuthSessionState session) {
     final user = session.user;
+    final role = user?.role;
+    // Создание ингредиента — только owner/admin (бэк: POST /owner/inventory;
+    // менеджеру → 403 FORBIDDEN).
+    final canManageInventory =
+        role == UserRole.owner || role == UserRole.admin;
 
     return Scaffold(
       appBar: AppBar(title: Text('settingsTitle'.tr())),
@@ -45,6 +51,20 @@ class SettingsScreen extends StatelessWidget {
             _ProfileCard(user: user),
           const SizedBox(height: AppSpacing.lg),
 
+          // Управление (создание ингредиента) — owner/admin/manager.
+          if (canManageInventory) ...[
+            _SectionHeader(title: 'settingsManageSection'.tr()),
+            _CardBox(
+              child: ListTile(
+                leading: const Icon(Icons.add_box_outlined),
+                title: Text('ingCreateTitle'.tr()),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => CreateIngredientScreen.open(context),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.lg),
+          ],
+
           // Язык
           _SectionHeader(title: 'settingsLanguageSection'.tr()),
           _CardBox(
@@ -59,7 +79,8 @@ class SettingsScreen extends StatelessWidget {
                     ),
                   _LanguageTile(
                     locale: AppLocales.supported[i],
-                    selected: context.locale.languageCode ==
+                    selected:
+                        context.locale.languageCode ==
                         AppLocales.supported[i].languageCode,
                   ),
                 ],
@@ -148,8 +169,9 @@ class _ProfileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isLight = ThemePalette.isLight(context);
-    final avatarBg =
-        isLight ? AppColorsLight.accentSoft : AppColors.surfaceElevated;
+    final avatarBg = isLight
+        ? AppColorsLight.accentSoft
+        : AppColors.surfaceElevated;
     final avatarFg = ThemePalette.accent(context);
 
     return _CardBox(
@@ -180,8 +202,9 @@ class _ProfileCard extends StatelessWidget {
                 children: [
                   Text(
                     user.name,
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.w500),
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -214,8 +237,9 @@ class _RolePill extends StatelessWidget {
     final bg = isLight
         ? AppColorsLight.accentSoft
         : ThemePalette.accent(context).withValues(alpha: 0.16);
-    final fg =
-        isLight ? AppColorsLight.onAccentSoft : ThemePalette.accent(context);
+    final fg = isLight
+        ? AppColorsLight.onAccentSoft
+        : ThemePalette.accent(context);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -226,30 +250,30 @@ class _RolePill extends StatelessWidget {
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w500,
-            ),
+          color: fg,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
 }
 
 String _roleLabel(UserRole role) => switch (role) {
-      UserRole.owner => 'roleOwner'.tr(),
-      UserRole.supervisor => 'roleSupervisor'.tr(),
-      UserRole.manager => 'roleManager'.tr(),
-      UserRole.chef => 'roleChef'.tr(),
-      UserRole.hotCook => 'roleHotCook'.tr(),
-      UserRole.coldCook => 'roleColdCook'.tr(),
-      UserRole.prepCook => 'rolePrepCook'.tr(),
-      UserRole.butcher => 'roleButcher'.tr(),
-      UserRole.storekeeper => 'roleStorekeeper'.tr(),
-      UserRole.waiter => 'roleWaiter'.tr(),
-      UserRole.admin => 'roleAdmin'.tr(),
-      UserRole.runner => 'roleRunner'.tr(),
-      UserRole.client => 'roleClient'.tr(),
-      UserRole.unknown => role.apiValue,
-    };
+  UserRole.owner => 'roleOwner'.tr(),
+  UserRole.supervisor => 'roleSupervisor'.tr(),
+  UserRole.manager => 'roleManager'.tr(),
+  UserRole.chef => 'roleChef'.tr(),
+  UserRole.hotCook => 'roleHotCook'.tr(),
+  UserRole.coldCook => 'roleColdCook'.tr(),
+  UserRole.prepCook => 'rolePrepCook'.tr(),
+  UserRole.butcher => 'roleButcher'.tr(),
+  UserRole.storekeeper => 'roleStorekeeper'.tr(),
+  UserRole.waiter => 'roleWaiter'.tr(),
+  UserRole.admin => 'roleAdmin'.tr(),
+  UserRole.runner => 'roleRunner'.tr(),
+  UserRole.client => 'roleClient'.tr(),
+  UserRole.unknown => role.apiValue,
+};
 
 /// Контейнер-карточка с единым скруглением/границей светлой темы.
 class _CardBox extends StatelessWidget {
@@ -287,9 +311,9 @@ class _SectionHeader extends StatelessWidget {
       child: Text(
         title,
         style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: ThemePalette.onSurfaceMuted(context),
-              fontWeight: FontWeight.w500,
-            ),
+          color: ThemePalette.onSurfaceMuted(context),
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -318,9 +342,9 @@ class _LanguageTile extends StatelessWidget {
         child: Text(
           locale.languageCode.toUpperCase(),
           style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: ThemePalette.onSurfaceMuted(context),
-                fontWeight: FontWeight.w500,
-              ),
+            color: ThemePalette.onSurfaceMuted(context),
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
       title: Text(_label(locale)),
@@ -337,9 +361,9 @@ class _LanguageTile extends StatelessWidget {
   }
 
   String _label(Locale locale) => switch (locale.languageCode) {
-        'ru' => 'languageRu'.tr(),
-        'kk' => 'languageKk'.tr(),
-        'en' => 'languageEn'.tr(),
-        _ => locale.languageCode,
-      };
+    'ru' => 'languageRu'.tr(),
+    'kk' => 'languageKk'.tr(),
+    'en' => 'languageEn'.tr(),
+    _ => locale.languageCode,
+  };
 }

@@ -11,9 +11,11 @@ class TechCardDraft {
     this.plannedPortions,
     this.planItemId,
     this.menuItemId,
+    this.categoryId,
     this.lossPct = 5,
     this.notes = '',
     List<TechCardIngredientDraft>? ingredients,
+    List<String>? photoUrls,
     this.serverCostPerPortion,
     this.originalSnapshot,
     this.scheduleless = false,
@@ -22,9 +24,9 @@ class TechCardDraft {
     this.changeLevel,
     this.submittedAt,
     this.approvedAt,
-    bool? halalRequired,
-  })  : _halalRequired = halalRequired,
-        ingredients = ingredients ?? [];
+    this.halalRequired = false,
+  })  : ingredients = ingredients ?? [],
+        photoUrls = photoUrls ?? [];
 
   final int? id;
   String name;
@@ -47,9 +49,15 @@ class TechCardDraft {
 
   /// `menu_item_id` блюда — уходит в PATCH техкарты (после approve обновит имя).
   int? menuItemId;
+
+  /// `category_id` — нужен при создании техкарты с нуля.
+  int? categoryId;
   double lossPct;
   String notes;
   List<TechCardIngredientDraft> ingredients;
+
+  /// Фото блюда (`photo_urls`). Редактируемо: добавляем/удаляем URL'ы.
+  List<String> photoUrls;
 
   /// Причина правки (manager → chef). Уходит в `approval_reason` при отправке.
   /// Транзиентна: не входит в snapshot/diff/копию.
@@ -96,10 +104,8 @@ class TechCardDraft {
   /// Себестоимость порции с бэкенда (`food_cost`), если в списке нет ингредиентов.
   final double? serverCostPerPortion;
 
-  /// Требование халяль (`halal_required`) — передаётся в PATCH без изменения.
-  final bool? _halalRequired;
-
-  bool get halalRequired => _halalRequired ?? false;
+  /// Требование халяль (`halal_required`) — редактируемо в форме.
+  bool halalRequired;
 
   /// Deep copy captured when editor opens — used for rollback.
   TechCardDraft? originalSnapshot;
@@ -155,9 +161,11 @@ class TechCardDraft {
       plannedPortions: plannedPortions,
       planItemId: planItemId,
       menuItemId: menuItemId,
+      categoryId: categoryId,
       lossPct: lossPct,
       notes: notes,
       ingredients: ingredients.map((e) => e.copy()).toList(),
+      photoUrls: List.of(photoUrls),
       serverCostPerPortion: serverCostPerPortion,
       scheduleless: scheduleless,
       readOnly: readOnly,
@@ -202,6 +210,14 @@ class TechCardIngredientDraft {
     this.brutto = 0,
     this.netto = 0,
     this.pricePerKg = 0,
+    this.cleaningPct,
+    this.cutType,
+    this.nettoPerPortion,
+    this.lossCoefficient,
+    this.cookingLossCoefficient,
+    this.lossReferenceId,
+    this.lossSource,
+    this.overrideReason,
   });
 
   final int? id;
@@ -217,6 +233,17 @@ class TechCardIngredientDraft {
   /// Цена ₸/кг — справочная, бэкенд считает себестоимость сам (не отправляем).
   double pricePerKg;
 
+  /// Поля потерь/обработки — переносим из карты и шлём обратно без изменений,
+  /// чтобы не сломать «ручную ссылку на потери» (иначе approve → 400).
+  double? cleaningPct;
+  String? cutType;
+  double? nettoPerPortion;
+  double? lossCoefficient;
+  double? cookingLossCoefficient;
+  int? lossReferenceId;
+  String? lossSource;
+  String? overrideReason;
+
   double get lineCost => (netto / 1000) * pricePerKg;
 
   TechCardIngredientDraft copy() {
@@ -227,6 +254,14 @@ class TechCardIngredientDraft {
       brutto: brutto,
       netto: netto,
       pricePerKg: pricePerKg,
+      cleaningPct: cleaningPct,
+      cutType: cutType,
+      nettoPerPortion: nettoPerPortion,
+      lossCoefficient: lossCoefficient,
+      cookingLossCoefficient: cookingLossCoefficient,
+      lossReferenceId: lossReferenceId,
+      lossSource: lossSource,
+      overrideReason: overrideReason,
     );
   }
 }

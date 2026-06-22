@@ -10,6 +10,7 @@ abstract final class AppRoutes {
   static const String createPlan = '/create-plan';
   static const String expenses = '/expenses';
   static const String supervisorPlans = '/supervisor-plans';
+  static const String techCards = '/tech-cards';
 
   static const String loginName = 'login';
   static const String dashboardName = 'dashboard';
@@ -21,6 +22,7 @@ abstract final class AppRoutes {
   static const String createPlanName = 'createPlan';
   static const String expensesName = 'expenses';
   static const String supervisorPlansName = 'supervisorPlans';
+  static const String techCardsName = 'techCards';
 
   static String dishPath(int id) => '/dishes/$id';
 }

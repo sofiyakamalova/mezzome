@@ -16,6 +16,7 @@ import 'package:mezzome/features/dashboard/presentation/screens/financial_dashbo
 import 'package:mezzome/features/dishes/presentation/screens/create_plan_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/dish_detail_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/dishes_screen.dart';
+import 'package:mezzome/features/dishes/presentation/screens/tech_cards_list_screen.dart';
 import 'package:mezzome/features/settings/presentation/screens/settings_screen.dart';
 import 'package:mezzome/features/shell/presentation/screens/main_shell_screen.dart';
 
@@ -99,6 +100,15 @@ GoRouter buildAppRouter(AuthSessionCubit auth) {
                 path: AppRoutes.expenses,
                 name: AppRoutes.expensesName,
                 builder: (context, state) => const FinancialDashboardScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppRoutes.techCards,
+                name: AppRoutes.techCardsName,
+                builder: (context, state) => const TechCardsListScreen(),
               ),
             ],
           ),

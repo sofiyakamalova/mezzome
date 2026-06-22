@@ -50,6 +50,8 @@ class TechnicalCardModel {
     this.isLatest = false,
     this.approvalReason,
     this.steps = const [],
+    this.compliance,
+    this.photoUrls = const [],
   });
 
   final int id;
@@ -114,6 +116,14 @@ class TechnicalCardModel {
   /// Шаги приготовления (`steps`).
   final List<TechnicalCardStepModel> steps;
 
+  /// Сводка соответствия (`compliance_summary`): КБЖУ, аллергены, халяль.
+  @JsonKey(name: 'compliance_summary')
+  final TechnicalCardCompliance? compliance;
+
+  /// Фото блюда (`photo_urls`).
+  @JsonKey(name: 'photo_urls')
+  final List<String> photoUrls;
+
   /// Действия, означающие, что версию можно редактировать/переотправить.
   static const _editActions = {
     'edit',
@@ -146,6 +156,31 @@ class TechnicalCardModel {
   Map<String, dynamic> toJson() => _$TechnicalCardModelToJson(this);
 }
 
+/// Сводка соответствия техкарты (`compliance_summary`). Структура КБЖУ
+/// динамическая (ключи зависят от заполненности nutrition_info ингредиентов),
+/// поэтому храним сырой Map и достаём известные ключи (calories/protein_g/…).
+@JsonSerializable(fieldRename: FieldRename.snake)
+class TechnicalCardCompliance {
+  const TechnicalCardCompliance({
+    this.nutritionPerPortion = const {},
+    this.nutritionTotal = const {},
+    this.allergens = const [],
+    this.halalRequired = false,
+    this.halalCompliant = false,
+  });
+
+  final Map<String, dynamic> nutritionPerPortion;
+  final Map<String, dynamic> nutritionTotal;
+  final List<String> allergens;
+  final bool halalRequired;
+  final bool halalCompliant;
+
+  factory TechnicalCardCompliance.fromJson(Map<String, dynamic> json) =>
+      _$TechnicalCardComplianceFromJson(json);
+
+  Map<String, dynamic> toJson() => _$TechnicalCardComplianceToJson(this);
+}
+
 @JsonSerializable(fieldRename: FieldRename.snake)
 class TechnicalCardIngredientModel {
   const TechnicalCardIngredientModel({
@@ -160,6 +195,11 @@ class TechnicalCardIngredientModel {
     this.cleaningPct,
     this.cutType,
     this.nettoPerPortion,
+    this.lossCoefficient,
+    this.cookingLossCoefficient,
+    this.lossReferenceId,
+    this.lossSource,
+    this.overrideReason,
   });
 
   final int id;
@@ -179,6 +219,14 @@ class TechnicalCardIngredientModel {
 
   /// Нетто на порцию (`netto_per_portion`).
   final double? nettoPerPortion;
+
+  /// Поля потерь — нужно сохранять при правке, иначе approve падает с
+  /// `override_reason is required for manual loss reference`.
+  final double? lossCoefficient;
+  final double? cookingLossCoefficient;
+  final int? lossReferenceId;
+  final String? lossSource;
+  final String? overrideReason;
 
   factory TechnicalCardIngredientModel.fromJson(Map<String, dynamic> json) =>
       _$TechnicalCardIngredientModelFromJson(json);
@@ -226,6 +274,7 @@ class UpdateTechnicalCardRequest {
     this.halalRequired = false,
     this.submitForApproval,
     this.approvalReason,
+    this.photoUrls,
   });
 
   final String? name;
@@ -234,6 +283,9 @@ class UpdateTechnicalCardRequest {
   final double? outputPerPortion;
   final String? outputUnit;
   final List<TechnicalCardIngredientInput>? ingredients;
+
+  /// Фото блюда (`photo_urls`) — URL'ы, полученные из `/uploads/image`.
+  final List<String>? photoUrls;
 
   /// Причина правки (`approval_reason`) — обязательна при отправке менеджером.
   final String? approvalReason;
@@ -251,6 +303,39 @@ class UpdateTechnicalCardRequest {
 }
 
 @JsonSerializable(fieldRename: FieldRename.snake, includeIfNull: false)
+class CreateTechnicalCardRequest {
+  const CreateTechnicalCardRequest({
+    required this.name,
+    this.categoryId,
+    this.menuItemId,
+    this.description,
+    this.basePortions,
+    this.outputPerPortion,
+    this.outputUnit,
+    this.halalRequired = false,
+    this.photoUrls,
+    this.ingredients,
+    this.approvalReason,
+    this.submitForApproval,
+  });
+
+  final String name;
+  final int? categoryId;
+  final int? menuItemId;
+  final String? description;
+  final double? basePortions;
+  final double? outputPerPortion;
+  final String? outputUnit;
+  final bool halalRequired;
+  final List<String>? photoUrls;
+  final List<TechnicalCardIngredientInput>? ingredients;
+  final String? approvalReason;
+  final bool? submitForApproval;
+
+  Map<String, dynamic> toJson() => _$CreateTechnicalCardRequestToJson(this);
+}
+
+@JsonSerializable(fieldRename: FieldRename.snake, includeIfNull: false)
 class TechnicalCardIngredientInput {
   const TechnicalCardIngredientInput({
     this.ingredientId,
@@ -259,6 +344,14 @@ class TechnicalCardIngredientInput {
     this.netto,
     this.costPerUnit,
     this.sortOrder,
+    this.cleaningPct,
+    this.cutType,
+    this.lossCoefficient,
+    this.cookingLossCoefficient,
+    this.lossReferenceId,
+    this.lossSource,
+    this.nettoPerPortion,
+    this.overrideReason,
   });
 
   final int? ingredientId;
@@ -267,6 +360,17 @@ class TechnicalCardIngredientInput {
   final double? netto;
   final double? costPerUnit;
   final int? sortOrder;
+
+  // Поля потерь/обработки — сохраняем сквозь правку, иначе бэкенд при approve
+  // ругается `override_reason is required for manual loss reference`.
+  final double? cleaningPct;
+  final String? cutType;
+  final double? lossCoefficient;
+  final double? cookingLossCoefficient;
+  final int? lossReferenceId;
+  final String? lossSource;
+  final double? nettoPerPortion;
+  final String? overrideReason;
 
   factory TechnicalCardIngredientInput.fromJson(Map<String, dynamic> json) =>
       _$TechnicalCardIngredientInputFromJson(json);

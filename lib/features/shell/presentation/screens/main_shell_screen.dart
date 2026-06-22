@@ -20,6 +20,7 @@ class MainShellScreen extends StatelessWidget {
   static const int myRequestsBranch = 4;
   static const int createPlanBranch = 5;
   static const int expensesBranch = 6;
+  static const int techCardsBranch = 7;
 
   @override
   Widget build(BuildContext context) {
@@ -81,6 +82,12 @@ class MainShellScreen extends StatelessWidget {
               icon: Icons.restaurant_menu_outlined,
               activeIcon: Icons.restaurant_menu,
               label: 'navMenu'.tr(),
+            ),
+            _BarItem(
+              branch: techCardsBranch,
+              icon: Icons.menu_book_outlined,
+              activeIcon: Icons.menu_book,
+              label: 'navTechCards'.tr(),
             ),
             _BarItem(
               branch: myRequestsBranch,

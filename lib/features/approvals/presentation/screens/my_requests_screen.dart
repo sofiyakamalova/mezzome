@@ -12,8 +12,7 @@ import 'package:mezzome/features/approvals/presentation/blocs/my_requests_bloc.d
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/data/models/technical_card_model.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
-import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_sheet.dart';
+import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
 
 /// «Мои запросы на изменение» (роль chef): техкарты, отправленные на
 /// согласование. Данные — `GET /chef/technical-cards?status=...`.
@@ -49,9 +48,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     super.dispose();
   }
 
-  /// Тап по запросу → открыть техкарту по её id (просмотр/правка).
+  /// Тап по запросу → полноэкранный редактор техкарты.
   Future<void> _openCard(TechnicalCardModel card) async {
-    final notifier = sl<MenuDashboardCubit>();
     final session = sl<AuthSessionCubit>().state.user;
     final role = session?.role;
     final showFinancials = role != null && canSeeFinancials(role);
@@ -68,17 +66,14 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       costPerPortion: card.foodCost > 0 ? card.foodCost : null,
     );
 
-    await notifier.selectCell(cell, requestContext: true);
-    if (!mounted) return;
-    if (notifier.state.editorDraft == null) {
-      return;
-    }
-    await TechCardEditorSheet.show(
+    await TechCardEditPage.open(
       context,
+      cell: cell,
       signature: signature,
       showFinancials: showFinancials,
+      requestContext: true,
     );
-    notifier.closeEditor();
+    if (!mounted) return;
     _bloc.add(const MyRequestsRefreshed());
   }
 

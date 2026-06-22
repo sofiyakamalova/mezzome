@@ -57,7 +57,10 @@ import 'package:mezzome/features/dishes/domain/use_cases/load_plan_form_use_case
 import 'package:mezzome/features/dishes/presentation/blocs/create_plan_bloc.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
+import 'package:mezzome/features/dishes/data/services/image_upload_service.dart';
+import 'package:mezzome/features/inventory/data/ingredient_create_service.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/tech_card_cubit.dart';
+import 'package:mezzome/features/dishes/presentation/blocs/tech_cards_list_cubit.dart';
 import 'package:mezzome/features/financial/data/services/financial_service.dart';
 import 'package:mezzome/features/financial/data/sources/financial_remote_source.dart';
 import 'package:mezzome/features/financial/domain/behaviors/financial_behavior.dart';
@@ -146,6 +149,12 @@ void _registerMenuDashboard() {
   );
   // Страница детали техкарты — новый инстанс на каждый экран.
   sl.registerFactory(() => TechCardCubit(sl<MenuDashboardRepository>()));
+  // Список всех техкарт (вкладка «Техкарты»).
+  sl.registerFactory(() => TechCardsListCubit(sl<MenuDashboardRepository>()));
+  // Загрузка фото техкарты.
+  sl.registerLazySingleton(() => ImageUploadService(sl<Dio>()));
+  // Создание ингредиента в справочник (owner/admin).
+  sl.registerLazySingleton(() => IngredientCreateService(sl<Dio>()));
 }
 
 /// Общий data-слой dishes (API + Ref-free репозитории) в get_it. Riverpod-

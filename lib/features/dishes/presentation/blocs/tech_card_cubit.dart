@@ -1,6 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:mezzome/core/logging/app_logger.dart';
-import 'package:mezzome/features/dishes/data/models/dish_model.dart';
 import 'package:mezzome/features/dishes/data/models/technical_card_model.dart';
 import 'package:mezzome/features/dishes/data/repository/menu_dashboard_repository.dart';
 import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
@@ -33,17 +32,15 @@ class TechCardCubit extends Cubit<TechCardState> {
         return;
       }
 
-      final menuItemId = item.menuItemId ?? card.menuItemId;
-      final dish =
-          menuItemId == null ? null : await _repo.loadMenuItem(menuItemId);
-
+      // Блюдо меню НЕ грузим: фото берём из card.photo_urls, КБЖУ/аллергены —
+      // из compliance_summary. Раньше тут тянулся весь каталог /menu/items (167
+      // блюд) ради одного — лишний тяжёлый запрос.
       final cardId = card.id;
       final history = await _repo.loadTechnicalCardHistory(cardId);
       final scale = await _repo.loadScaleVariance(cardId);
 
       emit(TechCardState.ready(TechCardData(
         card: card,
-        dish: dish,
         history: history,
         scale: scale,
       )));

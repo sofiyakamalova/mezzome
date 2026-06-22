@@ -266,6 +266,16 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
   void updateEditorDraft(TechCardDraft draft) =>
       emit(state.copyWith(editorDraft: draft));
 
+  /// Пустой черновик для создания техкарты с нуля (id == null → POST при сохр.).
+  void newDraft() {
+    final draft = TechCardDraft(scheduleless: true)
+      ..originalSnapshot = TechCardDraft(scheduleless: true);
+    emit(state.copyWith(
+      selectedCellKey: 'new_tech_card',
+      editorDraft: draft,
+    ));
+  }
+
   void rollbackEditor() {
     final original = state.editorOriginal;
     if (original == null) return;
@@ -304,7 +314,9 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
     }
   }
 
-  Future<SaveResult> saveAndSign() async {
+  /// [submit] true — отправить на согласование (`submit_for_approval`); иначе
+  /// сохранить как черновик (для создания) / правку.
+  Future<SaveResult> saveAndSign({bool submit = false}) async {
     final draft = state.editorDraft;
     final cellKey = state.selectedCellKey;
     if (draft == null || cellKey == null) {
@@ -320,38 +332,63 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
     final changes = draft.diffFrom(original);
     final isChef = session?.role == UserRole.chef;
 
-    if (!draft.readOnly && !draft.massConverges()) {
-      final pct = draft.massDivergencePct ?? 0;
-      appLogger.w('saveAndSign: blocked — mass divergence ${pct.toStringAsFixed(1)}%');
-      return SaveResult(
-        error: 'tcpMassBlock'.tr(namedArgs: {'pct': pct.toStringAsFixed(1)}),
-      );
-    }
-
+    // Проверку сходимости массы на фронте убрали — валидирует бэкенд.
     if (!isChef && changes.isNotEmpty && draft.editReason.trim().isEmpty) {
       appLogger.w('saveAndSign: blocked — edit reason required');
       return SaveResult(error: 'tcpReasonRequired'.tr());
     }
 
+    // Клиентская валидация (ингредиенты, ingredient_id, брутто/нетто) — и для
+    // правки, и для создания.
+    if (draft.name.trim().isEmpty) {
+      return SaveResult(error: 'tcpNameRequired'.tr());
+    }
+    final validationKey = draft.validationErrorKey();
+    if (validationKey != null) {
+      appLogger.w('saveAndSign: rejected by client validation: $validationKey');
+      return SaveResult(error: validationKey.tr());
+    }
+
     try {
       if (draft.id != null) {
-        final validationKey = draft.validationErrorKey();
-        if (validationKey != null) {
-          appLogger.w('saveAndSign: rejected by client validation: $validationKey');
-          return SaveResult(error: validationKey.tr());
-        }
-        appLogger.i('saveAndSign: PATCH technical-card ${draft.id}…');
-        final saved = await _repo.saveTechnicalCard(
-          id: draft.id!,
-          draft: draft,
-          submitForApproval: !isChef,
-        );
         if (isChef) {
-          final approveId = saved?.id ?? draft.id!;
-          await _repo.approveTechnicalCard(approveId);
+          // Шеф: сохраняем правку как черновик, затем — если жмёт «На проверку» —
+          // отправляем отдельной ручкой POST /submit (обходит баг UPDATE с tags).
+          appLogger.i('saveAndSign: PATCH technical-card ${draft.id} (chef)…');
+          final saved = await _repo.saveTechnicalCard(
+            id: draft.id!,
+            draft: draft,
+            submitForApproval: false,
+          );
+          final targetId = saved?.id ?? draft.id!;
+          if (submit) {
+            appLogger.i('saveAndSign: POST submit $targetId…');
+            await _repo.submitTechnicalCard(targetId);
+          } else {
+            // Best-effort само-approve (legacy; станет no-op при авто-approve).
+            try {
+              await _repo.approveTechnicalCard(targetId);
+            } on DioException catch (e) {
+              appLogger.w(
+                  'Self-approve skipped (HTTP ${e.response?.statusCode}): '
+                  '${e.response?.data}');
+            }
+          }
+        } else {
+          // Менеджер/овнер: правка сразу уходит на согласование (как раньше).
+          appLogger
+              .i('saveAndSign: PATCH technical-card ${draft.id} (manager)…');
+          await _repo.saveTechnicalCard(
+            id: draft.id!,
+            draft: draft,
+            submitForApproval: true,
+          );
         }
       } else {
-        appLogger.w('saveAndSign: draft has no card id — local journal only');
+        // Создание техкарты с нуля (POST). submit=false → черновик; true →
+        // сразу на согласование. (Бэкенд может авто-апрувить созданную карту.)
+        appLogger.i('saveAndSign: POST new technical-card (submit=$submit)…');
+        await _repo.createTechnicalCard(draft: draft, submitForApproval: submit);
       }
     } on DioException catch (error) {
       if (error.response != null) {

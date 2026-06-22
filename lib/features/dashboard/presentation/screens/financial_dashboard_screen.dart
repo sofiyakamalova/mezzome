@@ -495,15 +495,29 @@ class _KpiWrap extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, c) {
         final perRow = (c.maxWidth / 180).floor().clamp(2, 6);
-        const spacing = AppSpacing.sm;
-        final width = (c.maxWidth - spacing * (perRow - 1)) / perRow;
-        return Wrap(
-          spacing: spacing,
-          runSpacing: spacing,
-          children: [
-            for (final card in cards) SizedBox(width: width, child: card),
-          ],
-        );
+        const gap = AppSpacing.sm;
+
+        // Раскладываем рядами по perRow; карточки в ряду — равной высоты
+        // (IntrinsicHeight), чтобы те, у кого нет подписи, не «висели» короче.
+        final rows = <Widget>[];
+        for (var i = 0; i < cards.length; i += perRow) {
+          final slice = cards.skip(i).take(perRow).toList();
+          rows.add(IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var j = 0; j < perRow; j++) ...[
+                  if (j > 0) const SizedBox(width: gap),
+                  Expanded(child: j < slice.length ? slice[j] : const SizedBox()),
+                ],
+              ],
+            ),
+          ));
+          if (i + perRow < cards.length) {
+            rows.add(const SizedBox(height: gap));
+          }
+        }
+        return Column(children: rows);
       },
     );
   }
@@ -523,13 +537,20 @@ class _Kpi extends StatelessWidget {
   final String? sub;
   final Color? valueColor;
 
-  /// Цвет левой полоски-акцента (как в макете «Сводной»). null — без полоски.
+  /// Цвет точки-маркера перед подписью (по смыслу метрики). null — без точки.
   final Color? accent;
 
   @override
   Widget build(BuildContext context) {
-    final card = Container(
-      padding: const EdgeInsets.all(AppSpacing.sm),
+    final theme = Theme.of(context);
+    final muted = ThemePalette.onSurfaceMuted(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.md,
+        AppSpacing.sm,
+        AppSpacing.sm,
+        AppSpacing.sm,
+      ),
       decoration: BoxDecoration(
         color: ThemePalette.surfaceCard(context),
         borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
@@ -537,55 +558,54 @@ class _Kpi extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: ThemePalette.onSurfaceMuted(context),
-            ),
+          Row(
+            children: [
+              if (accent != null) ...[
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+              ],
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: muted,
+                    fontSize: 10.5,
+                    letterSpacing: 0.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           Text(
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
               color: valueColor,
             ),
           ),
-          if (sub != null)
+          if (sub != null) ...[
+            const SizedBox(height: 2),
             Text(
               sub!,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: ThemePalette.onSurfaceMuted(context),
-              ),
+              style: theme.textTheme.labelSmall?.copyWith(color: muted),
             ),
+          ],
         ],
       ),
-    );
-    if (accent == null) return card;
-    // Левая цветная полоска-акцент.
-    return Stack(
-      children: [
-        card,
-        Positioned(
-          left: 0,
-          top: 8,
-          bottom: 8,
-          child: Container(
-            width: 3,
-            decoration: BoxDecoration(
-              color: accent,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1184,11 +1204,18 @@ class _NutritionContent extends StatelessWidget {
 
     String mealSub(NutritionMealPeriod? mp) =>
         mp == null ? '' : formatPercent(mp.sharePct);
-    Widget mealKpi(String fallback, NutritionMealPeriod? mp) => _Kpi(
+    Widget mealKpi(String fallback, NutritionMealPeriod? mp, Color accent) =>
+        _Kpi(
           label: (mp != null && mp.name.isNotEmpty) ? mp.name : fallback.tr(),
           value: m(mp?.totalCost ?? 0),
           sub: mealSub(mp),
+          accent: accent,
         );
+
+    // Цвета приёмов — те же, что у точек в шапке таблицы.
+    final lime = AppColors.profitGreen;
+    const blue = Color(0xFF4AA8FF);
+    final red = AppColors.dangerRed;
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -1203,14 +1230,15 @@ class _NutritionContent extends StatelessWidget {
               sub: '${'nutVsPrev'.tr()} ${_changeLabel(s.changePct)}',
               valueColor:
                   money ? _changeColor(s.changePct, lessIsGood: true) : null,
-              accent: AppColors.profitGreen,
+              accent: lime,
             ),
-            mealKpi('nutBreakfast', breakfast),
-            mealKpi('nutLunch', lunch),
-            mealKpi('nutDinner', dinner),
+            mealKpi('nutBreakfast', breakfast, lime),
+            mealKpi('nutLunch', lunch, blue),
+            mealKpi('nutDinner', dinner, red),
             _Kpi(
               label: 'nutCpmDinner'.tr(),
               value: m(dinner?.averageCostPerMeal ?? s.averageCostPerMeal),
+              accent: red,
             ),
             if (data.forecast != null)
               _Kpi(

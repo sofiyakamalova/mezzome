@@ -8,19 +8,17 @@ import 'package:mezzome/core/l10n/weekday_labels.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
-import 'package:mezzome/core/widgets/app_flushbar.dart';
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
+import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
 import 'package:mezzome/features/dishes/presentation/screens/tech_card_page.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/day_menu_list.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/menu_dashboard_app_bar_title.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/production_grid_table.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/service_tabs.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/week_range_selector.dart';
-import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_sheet.dart';
 
 /// Режим показа меню-борда.
 enum _MenuViewMode {
@@ -149,29 +147,13 @@ class _DishesScreenState extends State<DishesScreen> {
     required String signature,
     required bool showFinancials,
   }) async {
-    final cubit = sl<MenuDashboardCubit>();
-    await cubit.selectCell(cell);
-    if (!mounted) {
-      return;
-    }
-
-    if (cubit.state.editorDraft == null) {
-      return;
-    }
-
-    final notice = cubit.state.techCardLoadNotice;
-    if (notice != null && context.mounted) {
-      AppFlushbar.showInfo(context, notice);
-      cubit.clearTechCardLoadNotice();
-    }
-
-    await TechCardEditorSheet.show(
+    // Полноэкранный редактор (грузит данные внутри, без «зависания»).
+    await TechCardEditPage.open(
       context,
+      cell: cell,
       signature: signature,
       showFinancials: showFinancials,
     );
-
-    cubit.closeEditor();
   }
 
   @override

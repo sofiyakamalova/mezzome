@@ -110,6 +110,20 @@ class MenuDashboardRepository {
     );
   }
 
+  /// Все техкарты (для вкладки «Техкарты»). По умолчанию — действующие головы
+  /// (без всех версий). `search`/`status` — опциональные фильтры.
+  Future<List<TechnicalCardModel>> listAllTechnicalCards({
+    String? search,
+    String? status,
+  }) async {
+    final response = await _listTechnicalCards(
+      search: search,
+      status: status,
+    );
+    appLogger.i('Tech cards list: ${response.cards.length} cards');
+    return response.cards;
+  }
+
   Future<TechnicalCardModel?> findTechnicalCardByName(String name) async {
     if (name.trim().isEmpty) {
       return null;
@@ -296,27 +310,39 @@ class MenuDashboardRepository {
       final request =
         UpdateTechnicalCardRequest(
           name: draft.name,
-          description: draft.notes.isEmpty ? null : draft.notes,
+          // Колонка description NOT NULL — шлём пустую строку, не null.
+          description: draft.notes,
           basePortions: draft.portions.toDouble(),
           outputPerPortion: draft.outputGrams,
           outputUnit: 'g',
           menuItemId: draft.menuItemId,
           halalRequired: draft.halalRequired,
           submitForApproval: submitForApproval,
+          photoUrls: draft.photoUrls,
           approvalReason:
               draft.editReason.trim().isEmpty ? null : draft.editReason.trim(),
-          // Бэкенд ждёт ingredient_id + граммовки; цену (cost_per_unit)
-          // не отправляем — себестоимость считается из справочника.
+          // ingredient_id + граммовки + sort_order. Нулевые коэффициенты потерь
+          // НЕ шлём (явный 0 бэкенд трактует как «ручную норму» и требует
+          // override_reason у каждого). override_reason шлём только там, где
+          // реально есть потеря (нетто<брутто) и нет справочной ссылки.
+          // Цену (cost_per_unit) не шлём — себестоимость считает бэкенд.
           ingredients: draft.ingredients
               .asMap()
               .entries
               .map(
-                (entry) => TechnicalCardIngredientInput(
-                  ingredientId: entry.value.ingredientId,
-                  brutto: entry.value.brutto,
-                  netto: entry.value.netto,
-                  sortOrder: entry.key,
-                ),
+                (entry) {
+                  final ing = entry.value;
+                  return TechnicalCardIngredientInput(
+                    ingredientId: ing.ingredientId,
+                    brutto: ing.brutto,
+                    netto: ing.netto,
+                    sortOrder: entry.key,
+                    cutType: ing.cutType,
+                    lossReferenceId: ing.lossReferenceId,
+                    lossSource: ing.lossSource,
+                    overrideReason: _overrideReasonFor(ing, draft.editReason),
+                  );
+                },
               )
               .toList(),
         );
@@ -335,6 +361,67 @@ class MenuDashboardRepository {
       );
       rethrow;
     }
+  }
+
+  /// Отправка техкарты шефом на согласование
+  /// (`POST /chef/technical-cards/{id}/submit`) → статус `pending_approval`.
+  Future<TechnicalCardModel?> submitTechnicalCard(int id) async {
+    try {
+      appLogger.i('POST submit technical-card $id…');
+      final result = await _technicalCardsApi.submitTechnicalCard(id);
+      appLogger.i('Submit OK: status=${result.status}, '
+          'approval=${result.approvalStatus}');
+      return result;
+    } on DioException catch (error) {
+      appLogger.w(
+        'Technical card submit failed (HTTP ${error.response?.statusCode}): '
+        '${error.response?.data ?? error.message}',
+      );
+      rethrow;
+    }
+  }
+
+  /// Создание техкарты с нуля (`POST /chef/technical-cards`). Возвращает
+  /// созданную карту. Поля потерь у ингредиентов — как в [saveTechnicalCard].
+  Future<TechnicalCardModel?> createTechnicalCard({
+    required TechCardDraft draft,
+    bool submitForApproval = false,
+  }) async {
+    final request = CreateTechnicalCardRequest(
+      name: draft.name,
+      categoryId: draft.categoryId,
+      menuItemId: draft.menuItemId,
+      // Колонка description NOT NULL — шлём пустую строку, не null.
+      description: draft.notes,
+      basePortions: draft.portions.toDouble(),
+      outputPerPortion: draft.outputGrams,
+      outputUnit: 'g',
+      halalRequired: draft.halalRequired,
+      photoUrls: draft.photoUrls,
+      submitForApproval: submitForApproval,
+      approvalReason:
+          draft.editReason.trim().isEmpty ? null : draft.editReason.trim(),
+      ingredients: draft.ingredients
+          .asMap()
+          .entries
+          .map(
+            (entry) => TechnicalCardIngredientInput(
+              ingredientId: entry.value.ingredientId,
+              brutto: entry.value.brutto,
+              netto: entry.value.netto,
+              sortOrder: entry.key,
+              overrideReason:
+                  _overrideReasonFor(entry.value, draft.editReason),
+            ),
+          )
+          .toList(),
+    );
+    appLogger.i('POST technical-card: name="${draft.name}", '
+        'category=${draft.categoryId}, ingredients=${draft.ingredients.length}, '
+        'submit=$submitForApproval');
+    final result = await _technicalCardsApi.createTechnicalCard(request);
+    appLogger.i('Technical card created: id=${result.id}, status=${result.status}');
+    return result;
   }
 
   /// Само-подтверждение техкарты шефом (`POST /chef/technical-cards/{id}/approve`):
@@ -458,6 +545,7 @@ class MenuDashboardRepository {
       plannedPortions: plannedPortions,
       planItemId: planItemId,
       menuItemId: menuItemId ?? card.menuItemId,
+      categoryId: card.categoryId,
       notes: card.description ?? '',
       serverCostPerPortion: serverCost,
       scheduleless: scheduleless,
@@ -467,6 +555,7 @@ class MenuDashboardRepository {
       submittedAt: card.submittedAt,
       approvedAt: card.approvedAt,
       halalRequired: card.halalRequired,
+      photoUrls: List.of(card.photoUrls),
       ingredients: card.ingredients
           .map(
             (ing) => TechCardIngredientDraft(
@@ -476,6 +565,14 @@ class MenuDashboardRepository {
               brutto: ing.brutto,
               netto: ing.netto,
               pricePerKg: ing.costPerUnit,
+              cleaningPct: ing.cleaningPct,
+              cutType: ing.cutType,
+              nettoPerPortion: ing.nettoPerPortion,
+              lossCoefficient: ing.lossCoefficient,
+              cookingLossCoefficient: ing.cookingLossCoefficient,
+              lossReferenceId: ing.lossReferenceId,
+              lossSource: ing.lossSource,
+              overrideReason: ing.overrideReason,
             ),
           )
           .toList(),
@@ -519,4 +616,18 @@ class MenuDashboardRepository {
     draft.originalSnapshot = draft.copyForSnapshot();
     return draft;
   }
+}
+
+/// `override_reason` для ингредиента с «ручной» нормой потерь (есть очистка/
+/// ужарка, но нет `loss_reference_id`). Бэкенд требует его при PATCH/approve,
+/// иначе `INVALID_TECHNICAL_CARD: override_reason is required for manual loss
+/// reference`. Берём существующий → причину правки → дефолт.
+String? _overrideReasonFor(TechCardIngredientDraft ing, String editReason) {
+  final hasLoss = ing.brutto != ing.netto || (ing.cleaningPct ?? 0) > 0;
+  final manual = hasLoss && ing.lossReferenceId == null;
+  if (!manual) return ing.overrideReason;
+  final existing = ing.overrideReason?.trim();
+  if (existing != null && existing.isNotEmpty) return existing;
+  final reason = editReason.trim();
+  return reason.isEmpty ? 'Ручная норма потерь' : reason;
 }

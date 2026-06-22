@@ -18,6 +18,12 @@ abstract class TechnicalCardsApi {
   @GET('/chef/technical-cards/{id}')
   Future<TechnicalCardModel> getTechnicalCard(@Path('id') int id);
 
+  /// Создание техкарты с нуля (`POST /chef/technical-cards`).
+  @POST('/chef/technical-cards')
+  Future<TechnicalCardModel> createTechnicalCard(
+    @Body() CreateTechnicalCardRequest request,
+  );
+
   /// Список техкарт для менеджера (`GET /manager/technical-cards`). Контракт
   /// тот же, что у chef-ручки — chef-роуты менеджеру отвечают 403.
   @GET('/manager/technical-cards')
@@ -55,6 +61,12 @@ abstract class TechnicalCardsApi {
   /// (`POST /manager/technical-cards/{id}/approve`, без тела).
   @POST('/manager/technical-cards/{id}/approve')
   Future<TechnicalCardModel> approveManagerTechnicalCard(@Path('id') int id);
+
+  /// Отправка техкарты шефом на согласование
+  /// (`POST /chef/technical-cards/{id}/submit`, без тела) → статус
+  /// `pending_approval`.
+  @POST('/chef/technical-cards/{id}/submit')
+  Future<TechnicalCardModel> submitTechnicalCard(@Path('id') int id);
 
   @GET('/chef/technical-cards/{id}/history')
   Future<dynamic> getTechnicalCardHistory(@Path('id') int id);

@@ -12,8 +12,7 @@ import 'package:mezzome/features/approvals/domain/models/approval_item.dart';
 import 'package:mezzome/features/approvals/presentation/blocs/approvals_bloc.dart';
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
-import 'package:mezzome/features/dishes/presentation/blocs/menu_dashboard_cubit.dart';
-import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/tech_card_editor_sheet.dart';
+import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
 
 /// Фильтр очереди согласований.
 /// UI-подписи/иконки для вкладок-фильтров (модель — в domain).
@@ -62,11 +61,10 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
     _bloc.add(ApprovalsDecided(id: id, approve: approve, reason: reason));
   }
 
-  /// Тап по заявке → открыть техкарту по её id для просмотра состава.
+  /// Тап по заявке → полноэкранный экран техкарты (просмотр/правка).
   Future<void> _review(ApprovalItem item) async {
     final id = item.id;
     if (id == null) return;
-    final notifier = sl<MenuDashboardCubit>();
     final session = sl<AuthSessionCubit>().state.user;
     final role = session?.role;
     final showFinancials = role != null && canSeeFinancials(role);
@@ -80,15 +78,13 @@ class _ApprovalsScreenState extends State<ApprovalsScreen> {
       technicalCardId: id,
       dishName: item.name,
     );
-    await notifier.selectCell(cell, requestContext: true);
-    if (!mounted) return;
-    if (notifier.state.editorDraft == null) return;
-    await TechCardEditorSheet.show(
+    await TechCardEditPage.open(
       context,
+      cell: cell,
       signature: signature,
       showFinancials: showFinancials,
+      requestContext: true,
     );
-    notifier.closeEditor();
   }
 
   @override

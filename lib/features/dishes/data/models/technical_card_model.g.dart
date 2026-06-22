@@ -81,6 +81,16 @@ TechnicalCardModel _$TechnicalCardModelFromJson(Map<String, dynamic> json) =>
               )
               .toList() ??
           const [],
+      compliance: json['compliance_summary'] == null
+          ? null
+          : TechnicalCardCompliance.fromJson(
+              json['compliance_summary'] as Map<String, dynamic>,
+            ),
+      photoUrls:
+          (json['photo_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
 
 Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
@@ -112,7 +122,32 @@ Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
       'is_latest': instance.isLatest,
       'approval_reason': instance.approvalReason,
       'steps': instance.steps.map((e) => e.toJson()).toList(),
+      'compliance_summary': instance.compliance?.toJson(),
+      'photo_urls': instance.photoUrls,
     };
+
+TechnicalCardCompliance _$TechnicalCardComplianceFromJson(
+  Map<String, dynamic> json,
+) => TechnicalCardCompliance(
+  nutritionPerPortion:
+      json['nutrition_per_portion'] as Map<String, dynamic>? ?? const {},
+  nutritionTotal: json['nutrition_total'] as Map<String, dynamic>? ?? const {},
+  allergens:
+      (json['allergens'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+      const [],
+  halalRequired: json['halal_required'] as bool? ?? false,
+  halalCompliant: json['halal_compliant'] as bool? ?? false,
+);
+
+Map<String, dynamic> _$TechnicalCardComplianceToJson(
+  TechnicalCardCompliance instance,
+) => <String, dynamic>{
+  'nutrition_per_portion': instance.nutritionPerPortion,
+  'nutrition_total': instance.nutritionTotal,
+  'allergens': instance.allergens,
+  'halal_required': instance.halalRequired,
+  'halal_compliant': instance.halalCompliant,
+};
 
 TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
   Map<String, dynamic> json,
@@ -128,6 +163,12 @@ TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
   cleaningPct: (json['cleaning_pct'] as num?)?.toDouble(),
   cutType: json['cut_type'] as String?,
   nettoPerPortion: (json['netto_per_portion'] as num?)?.toDouble(),
+  lossCoefficient: (json['loss_coefficient'] as num?)?.toDouble(),
+  cookingLossCoefficient: (json['cooking_loss_coefficient'] as num?)
+      ?.toDouble(),
+  lossReferenceId: (json['loss_reference_id'] as num?)?.toInt(),
+  lossSource: json['loss_source'] as String?,
+  overrideReason: json['override_reason'] as String?,
 );
 
 Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
@@ -144,6 +185,11 @@ Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
   'cleaning_pct': instance.cleaningPct,
   'cut_type': instance.cutType,
   'netto_per_portion': instance.nettoPerPortion,
+  'loss_coefficient': instance.lossCoefficient,
+  'cooking_loss_coefficient': instance.cookingLossCoefficient,
+  'loss_reference_id': instance.lossReferenceId,
+  'loss_source': instance.lossSource,
+  'override_reason': instance.overrideReason,
 };
 
 TechnicalCardStepModel _$TechnicalCardStepModelFromJson(
@@ -187,6 +233,9 @@ UpdateTechnicalCardRequest _$UpdateTechnicalCardRequestFromJson(
   halalRequired: json['halal_required'] as bool? ?? false,
   submitForApproval: json['submit_for_approval'] as bool?,
   approvalReason: json['approval_reason'] as String?,
+  photoUrls: (json['photo_urls'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
 );
 
 Map<String, dynamic> _$UpdateTechnicalCardRequestToJson(
@@ -199,9 +248,52 @@ Map<String, dynamic> _$UpdateTechnicalCardRequestToJson(
   if (instance.outputUnit case final value?) 'output_unit': value,
   if (instance.ingredients?.map((e) => e.toJson()).toList() case final value?)
     'ingredients': value,
+  if (instance.photoUrls case final value?) 'photo_urls': value,
   if (instance.approvalReason case final value?) 'approval_reason': value,
   if (instance.menuItemId case final value?) 'menu_item_id': value,
   'halal_required': instance.halalRequired,
+  if (instance.submitForApproval case final value?)
+    'submit_for_approval': value,
+};
+
+CreateTechnicalCardRequest _$CreateTechnicalCardRequestFromJson(
+  Map<String, dynamic> json,
+) => CreateTechnicalCardRequest(
+  name: json['name'] as String,
+  categoryId: (json['category_id'] as num?)?.toInt(),
+  menuItemId: (json['menu_item_id'] as num?)?.toInt(),
+  description: json['description'] as String?,
+  basePortions: (json['base_portions'] as num?)?.toDouble(),
+  outputPerPortion: (json['output_per_portion'] as num?)?.toDouble(),
+  outputUnit: json['output_unit'] as String?,
+  halalRequired: json['halal_required'] as bool? ?? false,
+  photoUrls: (json['photo_urls'] as List<dynamic>?)
+      ?.map((e) => e as String)
+      .toList(),
+  ingredients: (json['ingredients'] as List<dynamic>?)
+      ?.map(
+        (e) => TechnicalCardIngredientInput.fromJson(e as Map<String, dynamic>),
+      )
+      .toList(),
+  approvalReason: json['approval_reason'] as String?,
+  submitForApproval: json['submit_for_approval'] as bool?,
+);
+
+Map<String, dynamic> _$CreateTechnicalCardRequestToJson(
+  CreateTechnicalCardRequest instance,
+) => <String, dynamic>{
+  'name': instance.name,
+  if (instance.categoryId case final value?) 'category_id': value,
+  if (instance.menuItemId case final value?) 'menu_item_id': value,
+  if (instance.description case final value?) 'description': value,
+  if (instance.basePortions case final value?) 'base_portions': value,
+  if (instance.outputPerPortion case final value?) 'output_per_portion': value,
+  if (instance.outputUnit case final value?) 'output_unit': value,
+  'halal_required': instance.halalRequired,
+  if (instance.photoUrls case final value?) 'photo_urls': value,
+  if (instance.ingredients?.map((e) => e.toJson()).toList() case final value?)
+    'ingredients': value,
+  if (instance.approvalReason case final value?) 'approval_reason': value,
   if (instance.submitForApproval case final value?)
     'submit_for_approval': value,
 };
@@ -215,6 +307,15 @@ TechnicalCardIngredientInput _$TechnicalCardIngredientInputFromJson(
   netto: (json['netto'] as num?)?.toDouble(),
   costPerUnit: (json['cost_per_unit'] as num?)?.toDouble(),
   sortOrder: (json['sort_order'] as num?)?.toInt(),
+  cleaningPct: (json['cleaning_pct'] as num?)?.toDouble(),
+  cutType: json['cut_type'] as String?,
+  lossCoefficient: (json['loss_coefficient'] as num?)?.toDouble(),
+  cookingLossCoefficient: (json['cooking_loss_coefficient'] as num?)
+      ?.toDouble(),
+  lossReferenceId: (json['loss_reference_id'] as num?)?.toInt(),
+  lossSource: json['loss_source'] as String?,
+  nettoPerPortion: (json['netto_per_portion'] as num?)?.toDouble(),
+  overrideReason: json['override_reason'] as String?,
 );
 
 Map<String, dynamic> _$TechnicalCardIngredientInputToJson(
@@ -226,6 +327,15 @@ Map<String, dynamic> _$TechnicalCardIngredientInputToJson(
   if (instance.netto case final value?) 'netto': value,
   if (instance.costPerUnit case final value?) 'cost_per_unit': value,
   if (instance.sortOrder case final value?) 'sort_order': value,
+  if (instance.cleaningPct case final value?) 'cleaning_pct': value,
+  if (instance.cutType case final value?) 'cut_type': value,
+  if (instance.lossCoefficient case final value?) 'loss_coefficient': value,
+  if (instance.cookingLossCoefficient case final value?)
+    'cooking_loss_coefficient': value,
+  if (instance.lossReferenceId case final value?) 'loss_reference_id': value,
+  if (instance.lossSource case final value?) 'loss_source': value,
+  if (instance.nettoPerPortion case final value?) 'netto_per_portion': value,
+  if (instance.overrideReason case final value?) 'override_reason': value,
 };
 
 AuditLogListResponse _$AuditLogListResponseFromJson(

@@ -5,13 +5,11 @@ enum TechCardStatus { loading, ready, notFound }
 class TechCardData {
   const TechCardData({
     required this.card,
-    required this.dish,
     required this.history,
     required this.scale,
   });
 
   final TechnicalCardModel card;
-  final DishModel? dish;
   final TechCardHistoryResult history;
   final ScaleVarianceResult scale;
 }
