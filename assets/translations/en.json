@@ -1,4 +1,5 @@
 {
+  "tcpCategoryRequired": "Select a dish category",
   "ingPriceRequired": "Enter a price greater than 0",
   "settingsManageSection": "Management",
   "ingCreateTitle": "Create ingredient",

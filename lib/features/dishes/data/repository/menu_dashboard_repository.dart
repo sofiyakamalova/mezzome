@@ -483,17 +483,11 @@ class MenuDashboardRepository {
   /// (chef → его текущая `chef/kitchens/current`; manager → первая из `/kitchens`,
   /// chef-роут менеджеру отвечает 403), затем тянем её ингредиенты.
   Future<List<IngredientCatalogItem>> loadIngredientCatalog() async {
-    final kitchens = await _dishesRepository.planKitchens();
-    if (kitchens.isEmpty) {
-      appLogger.w('Ingredient catalog: no kitchen available');
-      return const [];
-    }
-    final kitchen = kitchens.first;
-    final items = await _ingredientsApi.getKitchenIngredients(kitchen.id);
+    // Ингредиенты для техкарты тянем из общего инвентаря (`GET /inventory`),
+    // а не из ингредиентов конкретной кухни — так шире справочник.
+    final items = await _ingredientsApi.getInventory();
     items.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    appLogger.i(
-      'Ingredient catalog: ${items.length} items (kitchen ${kitchen.id})',
-    );
+    appLogger.i('Ingredient catalog: ${items.length} items (GET /inventory)');
     return items;
   }
 
@@ -622,10 +616,11 @@ class MenuDashboardRepository {
 /// ужарка, но нет `loss_reference_id`). Бэкенд требует его при PATCH/approve,
 /// иначе `INVALID_TECHNICAL_CARD: override_reason is required for manual loss
 /// reference`. Берём существующий → причину правки → дефолт.
-String? _overrideReasonFor(TechCardIngredientDraft ing, String editReason) {
-  final hasLoss = ing.brutto != ing.netto || (ing.cleaningPct ?? 0) > 0;
-  final manual = hasLoss && ing.lossReferenceId == null;
-  if (!manual) return ing.overrideReason;
+/// `override_reason` для строки ингредиента. Бэк считает потерю «ручной» даже
+/// когда брутто==нетто (берёт коэффициент из справочника ингредиента) и требует
+/// причину при апруве. Поэтому шлём reason ДЛЯ КАЖДОЙ строки: приоритет —
+/// причина строки, затем причина правки, затем дефолт.
+String _overrideReasonFor(TechCardIngredientDraft ing, String editReason) {
   final existing = ing.overrideReason?.trim();
   if (existing != null && existing.isNotEmpty) return existing;
   final reason = editReason.trim();

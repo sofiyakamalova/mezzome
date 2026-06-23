@@ -1,4 +1,5 @@
 {
+  "tcpCategoryRequired": "Тағам санатын таңдаңыз",
   "ingPriceRequired": "0-ден жоғары баға енгізіңіз",
   "settingsManageSection": "Басқару",
   "ingCreateTitle": "Ингредиент құру",

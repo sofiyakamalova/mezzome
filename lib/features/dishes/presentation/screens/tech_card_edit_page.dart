@@ -289,7 +289,7 @@ class _EditFormState extends State<_EditForm> {
                         initialValue: _d.categoryId,
                         isExpanded: true,
                         decoration: InputDecoration(
-                          labelText: 'tcpFieldCategory'.tr(),
+                          labelText: '${'tcpFieldCategory'.tr()} *',
                           isDense: true,
                           border: const OutlineInputBorder(),
                         ),
@@ -370,7 +370,9 @@ class _EditFormState extends State<_EditForm> {
               // автоматически на бэке. Правка: «Черновик» / «На проверку».
               child: widget.isCreate
                   ? FilledButton.icon(
-                      onPressed: _saving ? null : () => _save(submit: false),
+                      // Создание сразу отправляет на согласование (бэк сам
+                      // авто-approve не делает) → submit_for_approval: true.
+                      onPressed: _saving ? null : () => _save(submit: true),
                       icon: _saving
                           ? const SizedBox(
                               width: 18,

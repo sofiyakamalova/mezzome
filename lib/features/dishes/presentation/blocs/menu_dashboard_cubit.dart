@@ -343,6 +343,11 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
     if (draft.name.trim().isEmpty) {
       return SaveResult(error: 'tcpNameRequired'.tr());
     }
+    // Категория обязательна при создании: без category_id бэкенд не регистрирует
+    // техкарту как блюдо в меню (не попадёт в список блюд / план).
+    if (draft.id == null && draft.categoryId == null) {
+      return SaveResult(error: 'tcpCategoryRequired'.tr());
+    }
     final validationKey = draft.validationErrorKey();
     if (validationKey != null) {
       appLogger.w('saveAndSign: rejected by client validation: $validationKey');

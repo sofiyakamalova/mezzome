@@ -1,4 +1,5 @@
 {
+  "tcpCategoryRequired": "Выберите категорию блюда",
   "ingPriceRequired": "Укажите цену больше 0",
   "settingsManageSection": "Управление",
   "ingCreateTitle": "Создать ингредиент",

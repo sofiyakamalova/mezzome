@@ -11,8 +11,18 @@ class IngredientsApi {
 
   final Dio _dio;
 
-  /// Справочник ингредиентов кухни — источник `ingredient_id` для ручного
-  /// выбора. Серверного поиска нет, фильтруем список на клиенте.
+  /// Справочник ингредиентов (`GET /inventory`, `dto.InventoryListResponse`)
+  /// — источник `ingredient_id` для ручного выбора в техкарте. Серверного
+  /// поиска нет, фильтруем список на клиенте.
+  Future<List<IngredientCatalogItem>> getInventory() async {
+    final res = await _dio.get<dynamic>('/inventory');
+    return ingredientItemsFromResponse(res.data)
+        .map(IngredientCatalogItem.tryParse)
+        .whereType<IngredientCatalogItem>()
+        .toList();
+  }
+
+  /// Справочник ингредиентов конкретной кухни (`GET /kitchens/{id}/ingredients`).
   Future<List<IngredientCatalogItem>> getKitchenIngredients(
     int kitchenId,
   ) async {
