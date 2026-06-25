@@ -50,6 +50,7 @@ class TechnicalCardModel {
     this.isLatest = false,
     this.approvalReason,
     this.steps = const [],
+    this.cookingSteps = const [],
     this.compliance,
     this.photoUrls = const [],
   });
@@ -113,8 +114,13 @@ class TechnicalCardModel {
   /// Причина правки/решения (`approval_reason`).
   final String? approvalReason;
 
-  /// Шаги приготовления (`steps`).
+  /// Шаги приготовления (`steps`) — старый формат.
   final List<TechnicalCardStepModel> steps;
+
+  /// Технология приготовления (`cooking_steps`) — новый формат с методом,
+  /// оборудованием, режимом (темп/время/влажность), привязкой к ингредиентам.
+  @JsonKey(name: 'cooking_steps')
+  final List<TechnicalCardCookingStep> cookingSteps;
 
   /// Сводка соответствия (`compliance_summary`): КБЖУ, аллергены, халяль.
   @JsonKey(name: 'compliance_summary')
@@ -181,6 +187,60 @@ class TechnicalCardCompliance {
   Map<String, dynamic> toJson() => _$TechnicalCardComplianceToJson(this);
 }
 
+/// Шаг технологии приготовления (`cooking_steps[]`). Метод/оборудование
+/// бэкенд разворачивает (id + code + name), режим — темп/время/влажность.
+@JsonSerializable(fieldRename: FieldRename.snake)
+class TechnicalCardCookingStep {
+  const TechnicalCardCookingStep({
+    this.id,
+    this.stepOrder = 0,
+    this.title,
+    this.instruction,
+    this.cookingMethodId,
+    this.methodCode,
+    this.methodName,
+    this.equipmentId,
+    this.equipmentCode,
+    this.equipmentName,
+    this.temperatureC,
+    this.durationMinutes,
+    this.humidityPct,
+    this.steamPct,
+    this.fanSpeedPct,
+    this.targetInternalTempC,
+    this.stage,
+    this.ingredientRefs = const [],
+    this.notes,
+    this.chefComment,
+  });
+
+  final int? id;
+  final int stepOrder;
+  final String? title;
+  final String? instruction;
+  final int? cookingMethodId;
+  final String? methodCode;
+  final String? methodName;
+  final int? equipmentId;
+  final String? equipmentCode;
+  final String? equipmentName;
+  final num? temperatureC;
+  final num? durationMinutes;
+  final num? humidityPct;
+  final num? steamPct;
+  final num? fanSpeedPct;
+  final num? targetInternalTempC;
+  final String? stage;
+  final List<int> ingredientRefs;
+  final String? notes;
+  final String? chefComment;
+
+  factory TechnicalCardCookingStep.fromJson(Map<String, dynamic> json) =>
+      _$TechnicalCardCookingStepFromJson(json);
+
+  Map<String, dynamic> toJson() => _$TechnicalCardCookingStepToJson(this);
+}
+
 @JsonSerializable(fieldRename: FieldRename.snake)
 class TechnicalCardIngredientModel {
   const TechnicalCardIngredientModel({
@@ -200,6 +260,12 @@ class TechnicalCardIngredientModel {
     this.lossReferenceId,
     this.lossSource,
     this.overrideReason,
+    this.chefComment,
+    this.prepComment,
+    this.cookingComment,
+    this.servingComment,
+    this.methodHint,
+    this.targetOutput,
   });
 
   final int id;
@@ -227,6 +293,15 @@ class TechnicalCardIngredientModel {
   final int? lossReferenceId;
   final String? lossSource;
   final String? overrideReason;
+
+  /// Комментарии по ингредиенту (optional, новые поля бэка): для шефа, заготовки,
+  /// приготовления, подачи + подсказка метода и желаемый результат.
+  final String? chefComment;
+  final String? prepComment;
+  final String? cookingComment;
+  final String? servingComment;
+  final String? methodHint;
+  final String? targetOutput;
 
   factory TechnicalCardIngredientModel.fromJson(Map<String, dynamic> json) =>
       _$TechnicalCardIngredientModelFromJson(json);

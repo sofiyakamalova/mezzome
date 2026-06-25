@@ -53,16 +53,6 @@ class ProductionCardScreen extends StatefulWidget {
 }
 
 const _normUgarka = 0.30; // нормативная ужарка нетто→выход
-const _equipment = [
-  'Варочный котёл',
-  'Пароконвектомат',
-  'Плита',
-  'Жарочная поверхность',
-  'Сковорода',
-  'Гриль',
-  'Фритюр',
-];
-const _methods = ['Тушение', 'Варка', 'Жарка', 'Запекание'];
 
 String _fmt(num n, [int d = 0]) {
   final v = n.isFinite ? n : 0;
@@ -92,6 +82,9 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
 
   // ── Нормативная рецептура на 1 порцию (из техкарты) ──
   List<_Ing> _recipe = const [];
+  List<TechnicalCardCookingStep> _cookingSteps = const [];
+  // Комменты по ингредиенту (chef/prep/cooking + cut_type/target) по id.
+  final Map<int, TechnicalCardIngredientModel> _ingById = {};
   int _basePortions = 1;
   String _dishName = '';
   String _code = '';
@@ -154,6 +147,12 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     for (final ing in _recipe) {
       _prices[ing.key] = ing.price;
     }
+    _cookingSteps = card.cookingSteps;
+    _ingById
+      ..clear()
+      ..addEntries(card.ingredients
+          .where((e) => e.ingredientId != null)
+          .map((e) => MapEntry(e.ingredientId!, e)));
 
     _portionsCtrl.text = '$_portions';
     _loadSaved();
@@ -360,19 +359,26 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
         for (final pr in pv.rows)
           () {
             final f = _unitFactor(pr.unit);
-            // «Выход» по ингредиенту: приоритет — loss% из plan-vs-actual,
-            // иначе cooking_loss из preview, иначе netto (fallback бэкендера).
+            // «Выход»: приоритет — серверный `output`; иначе loss% из
+            // plan-vs-actual; иначе cooking_loss из preview (fallback).
             final pvaIng = _pva?.byIngredient[pr.ingredientId];
-            final lossFrac = pvaIng?.plannedLossPct != null
-                ? pvaIng!.plannedLossPct! / 100
-                : pr.cookLoss;
+            final double outKg;
+            if (pr.output > 0) {
+              outKg = pr.output * f; // серверный выход — сами не считаем
+            } else {
+              final lossFrac = pvaIng?.plannedLossPct != null
+                  ? pvaIng!.plannedLossPct! / 100
+                  : pr.cookLoss;
+              outKg = pr.netto * (1 - lossFrac) * f;
+            }
             return _Row(
               priceKey: null,
+              ingredientId: pr.ingredientId,
               name: pr.name,
               unit: pr.unit,
               bruttoKg: pr.brutto * f,
               nettoKg: pr.netto * f,
-              outKg: pr.netto * (1 - lossFrac) * f,
+              outKg: outKg,
               price: pr.costPerUnit,
               sum: pr.totalCost,
             );
@@ -385,6 +391,7 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
         final price = _prices[r.key] ?? r.price;
         return _Row(
           priceKey: r.key,
+          ingredientId: r.id,
           name: r.name,
           unit: r.unit,
           bruttoKg: r.bruttoPP * n * f,
@@ -779,6 +786,7 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
           Text(r.name, style: TextStyle(color: _txt, fontSize: 13)),
           if (r.unit != null)
             Text('ед: ${r.unit}', style: TextStyle(color: _dim2, fontSize: 11)),
+          ..._ingHints(r.ingredientId),
         ])),
         _numCell(_fmt(r.bruttoKg, 1)),
         _numCell(_fmt(r.nettoKg, 1), color: _dim),
@@ -814,10 +822,12 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
       decoration:
           BoxDecoration(border: Border(top: BorderSide(color: _line, width: 2))),
       children: [
+        _cell(const SizedBox()),
         _cell(Text('ИТОГО',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 color: _txt, fontSize: 13, fontWeight: FontWeight.w700))),
-        _cell(const SizedBox()),
         _numCell(_fmt(c.bruttoKg, 1), weight: FontWeight.w700),
         _numCell(_fmt(c.nettoKg, 1), weight: FontWeight.w700, color: _dim),
         _numCell(_fmt(c.outKg, 1), weight: FontWeight.w700, color: _accent),
@@ -881,53 +891,121 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     );
   }
 
-  // ── Технология ──
+  /// Подсказки по ингредиенту из техкарты (нарезка/комменты) — под названием.
+  List<Widget> _ingHints(int? id) {
+    final m = id == null ? null : _ingById[id];
+    if (m == null) return const [];
+    final hints = <String>[
+      if ((m.cutType ?? '').isNotEmpty) 'нарезка: ${m.cutType}',
+      if ((m.chefComment ?? '').isNotEmpty) m.chefComment!,
+      if ((m.prepComment ?? '').isNotEmpty) 'заготовка: ${m.prepComment}',
+      if ((m.cookingComment ?? '').isNotEmpty) 'готовка: ${m.cookingComment}',
+      if ((m.targetOutput ?? '').isNotEmpty) '→ ${m.targetOutput}',
+    ];
+    return [
+      for (final h in hints)
+        Text(h,
+            style: TextStyle(color: _dim2, fontSize: 11),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis),
+    ];
+  }
+
+  // ── Технология приготовления (cooking_steps из техкарты) ──
   Widget _techSection() {
+    final steps = [..._cookingSteps]..sort((a, b) => a.stepOrder.compareTo(b.stepOrder));
     return _panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _sectionHead('Технология приготовления'),
+          _sectionHead('Технология приготовления',
+              trailing: steps.isNotEmpty
+                  ? Text('${steps.length} шаг(ов)',
+                      style: TextStyle(color: _dim2, fontSize: 11))
+                  : null),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _miniLabel('Метод'),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final m in _methods)
-                  _selChip(m, _method == m, () => setState(() {
-                        _method = m;
-                        _dirty = true;
-                      })),
-              ]),
-              const SizedBox(height: 18),
-              _miniLabel('Оборудование'),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final eq in _equipment)
-                  _selChip(eq, _equip.contains(eq), () {
-                    setState(() {
-                      _equip.contains(eq) ? _equip.remove(eq) : _equip.add(eq);
-                      _dirty = true;
-                    });
-                  }),
-              ]),
-              const SizedBox(height: 18),
-              Row(children: [
-                Expanded(
-                    child: _paramField(
-                        'Температура, °C', _temp, (v) => _temp = v)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: _paramField('Время, мин', _time, (v) => _time = v)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: _paramField(
-                        'Влажность, %', _humidity, (v) => _humidity = v)),
-              ]),
-            ]),
+            child: steps.isEmpty
+                ? Text('Шаги приготовления не заданы в техкарте.',
+                    style: TextStyle(color: _dim, fontSize: 13))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < steps.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 14),
+                        _stepTile(i + 1, steps[i]),
+                      ],
+                    ],
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  Widget _stepTile(int n, TechnicalCardCookingStep s) {
+    final mode = <String>[
+      if (s.temperatureC != null) '${_fmt(s.temperatureC!)}°C',
+      if (s.durationMinutes != null) '${_fmt(s.durationMinutes!)} мин',
+      if (s.humidityPct != null) 'влажн. ${_fmt(s.humidityPct!)}%',
+      if (s.steamPct != null) 'пар ${_fmt(s.steamPct!)}%',
+      if (s.targetInternalTempC != null)
+        'внутри ${_fmt(s.targetInternalTempC!)}°C',
+    ].join(' · ');
+    final tags = <String>[
+      if ((s.methodName ?? '').isNotEmpty) s.methodName!,
+      if ((s.equipmentName ?? '').isNotEmpty) s.equipmentName!,
+    ];
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        width: 24,
+        height: 24,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text('$n',
+            style: TextStyle(
+                color: _accent, fontSize: 12, fontWeight: FontWeight.w700)),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if ((s.title ?? '').isNotEmpty)
+            Text(s.title!,
+                style: TextStyle(
+                    color: _txt, fontSize: 14, fontWeight: FontWeight.w700)),
+          if ((s.instruction ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(s.instruction!,
+                  style: TextStyle(color: _dim, fontSize: 13)),
+            ),
+          if (tags.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(
+                  spacing: 8, runSpacing: 6, children: [for (final t in tags) _chip(t)]),
+            ),
+          if (mode.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(mode,
+                  style: TextStyle(color: _dim2, fontSize: 12)),
+            ),
+          if ((s.chefComment ?? '').isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('шеф: ${s.chefComment}',
+                  style: TextStyle(
+                      color: _dim2,
+                      fontSize: 12,
+                      fontStyle: FontStyle.italic)),
+            ),
+        ]),
+      ),
+    ]);
   }
 
   // ── Контроль процесса ──
@@ -1362,48 +1440,6 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     );
   }
 
-  Widget _paramField(String label, double value, ValueChanged<double> onChange) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _miniLabel(label),
-      TextField(
-        controller: TextEditingController(text: _fmt(value))
-          ..selection = const TextSelection.collapsed(offset: -1),
-        keyboardType: TextInputType.number,
-        style: TextStyle(color: _txt, fontSize: 18),
-        decoration: _fieldDeco(),
-        onChanged: (v) {
-          final p = double.tryParse(v.replaceAll(',', '.'));
-          if (p != null) {
-            setState(() {
-              onChange(p);
-              _dirty = true;
-            });
-          }
-        },
-      ),
-    ]);
-  }
-
-  Widget _selChip(String t, bool on, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          decoration: BoxDecoration(
-            color: on ? _accent : _panel2,
-            border: Border.all(color: on ? _accent : _line),
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(t,
-              style: TextStyle(
-                  color: on
-                      ? (ThemePalette.isLight(context) ? Colors.white : Colors.black)
-                      : _dim,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
-        ),
-      );
-
   Widget _zone(String code, String name, String plan,
       {String? fact, Color? factColor, bool last = false}) {
     return Container(
@@ -1584,11 +1620,12 @@ class _PlanVsActual {
 /// Строка ингредиента из ответа `preview` (брутто/нетто УЖЕ на N порций).
 class _PreviewRow {
   _PreviewRow(this.ingredientId, this.name, this.unit, this.brutto, this.netto,
-      this.costPerUnit, this.totalCost, this.cookLoss);
+      this.output, this.costPerUnit, this.totalCost, this.cookLoss);
   final int? ingredientId;
   final String name;
   final String? unit;
-  final double brutto, netto, costPerUnit, totalCost, cookLoss;
+  // `output` — серверный выход по ингредиенту (0, если бэк не прислал).
+  final double brutto, netto, output, costPerUnit, totalCost, cookLoss;
 }
 
 /// Серверный расчёт из `preview` (рецептура/себестоимость/КБЖУ/аллергены под N).
@@ -1631,6 +1668,8 @@ class _Preview {
           r['unit'] as String?,
           d(r['brutto']),
           d(r['netto']),
+          // Серверный выход (новое поле бэка); planned_output как запасной.
+          d(r['output'] ?? r['planned_output']),
           d(r['cost_per_unit']),
           d(r['total_cost']),
           d(r['cooking_loss_coefficient']),
@@ -1657,6 +1696,7 @@ class _Preview {
 class _Row {
   _Row({
     this.priceKey, // non-null = цену можно править (фронт-расчёт); null = с бэка
+    this.ingredientId,
     required this.name,
     this.unit,
     required this.bruttoKg,
@@ -1666,6 +1706,7 @@ class _Row {
     required this.sum,
   });
   final String? priceKey;
+  final int? ingredientId;
   final String name;
   final String? unit;
   final double bruttoKg, nettoKg, outKg, price, sum;

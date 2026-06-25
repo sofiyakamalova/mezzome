@@ -24,74 +24,80 @@ Map<String, dynamic> _$TechnicalCardListResponseToJson(
   'total': instance.total,
 };
 
-TechnicalCardModel _$TechnicalCardModelFromJson(Map<String, dynamic> json) =>
-    TechnicalCardModel(
-      id: (json['id'] as num).toInt(),
-      name: json['name'] as String,
-      menuItemId: (json['menu_item_id'] as num?)?.toInt(),
-      description: json['description'] as String?,
-      basePortions: (json['base_portions'] as num?)?.toDouble() ?? 1,
-      outputPerPortion: (json['output_per_portion'] as num?)?.toDouble() ?? 0,
-      outputUnit: json['output_unit'] as String? ?? 'g',
-      totalIngredientCost:
-          (json['total_ingredient_cost'] as num?)?.toDouble() ?? 0,
-      foodCost: (json['food_cost'] as num?)?.toDouble() ?? 0,
-      categoryId: (json['category_id'] as num?)?.toInt(),
-      categoryName: json['category_name'] as String?,
-      status: json['status'] as String?,
-      approvalStatus: json['approval_status'] as String?,
-      availableActions:
-          (json['available_actions'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          const [],
-      version: (json['version'] as num?)?.toInt(),
-      changeLevel: json['change_level'] as String?,
-      submittedAt: json['submitted_at'] == null
-          ? null
-          : DateTime.parse(json['submitted_at'] as String),
-      approvedAt: json['approved_at'] == null
-          ? null
-          : DateTime.parse(json['approved_at'] as String),
-      updatedAt: json['updated_at'] == null
-          ? null
-          : DateTime.parse(json['updated_at'] as String),
-      halalRequired: json['halal_required'] as bool? ?? false,
-      ingredients:
-          (json['ingredients'] as List<dynamic>?)
-              ?.map(
-                (e) => TechnicalCardIngredientModel.fromJson(
-                  e as Map<String, dynamic>,
-                ),
-              )
-              .toList() ??
-          const [],
-      code: json['code'] as String?,
-      createdAt: json['created_at'] == null
-          ? null
-          : DateTime.parse(json['created_at'] as String),
-      createdBy: (json['created_by'] as num?)?.toInt(),
-      isLatest: json['is_latest'] as bool? ?? false,
-      approvalReason: json['approval_reason'] as String?,
-      steps:
-          (json['steps'] as List<dynamic>?)
-              ?.map(
-                (e) =>
-                    TechnicalCardStepModel.fromJson(e as Map<String, dynamic>),
-              )
-              .toList() ??
-          const [],
-      compliance: json['compliance_summary'] == null
-          ? null
-          : TechnicalCardCompliance.fromJson(
-              json['compliance_summary'] as Map<String, dynamic>,
+TechnicalCardModel _$TechnicalCardModelFromJson(
+  Map<String, dynamic> json,
+) => TechnicalCardModel(
+  id: (json['id'] as num).toInt(),
+  name: json['name'] as String,
+  menuItemId: (json['menu_item_id'] as num?)?.toInt(),
+  description: json['description'] as String?,
+  basePortions: (json['base_portions'] as num?)?.toDouble() ?? 1,
+  outputPerPortion: (json['output_per_portion'] as num?)?.toDouble() ?? 0,
+  outputUnit: json['output_unit'] as String? ?? 'g',
+  totalIngredientCost: (json['total_ingredient_cost'] as num?)?.toDouble() ?? 0,
+  foodCost: (json['food_cost'] as num?)?.toDouble() ?? 0,
+  categoryId: (json['category_id'] as num?)?.toInt(),
+  categoryName: json['category_name'] as String?,
+  status: json['status'] as String?,
+  approvalStatus: json['approval_status'] as String?,
+  availableActions:
+      (json['available_actions'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
+  version: (json['version'] as num?)?.toInt(),
+  changeLevel: json['change_level'] as String?,
+  submittedAt: json['submitted_at'] == null
+      ? null
+      : DateTime.parse(json['submitted_at'] as String),
+  approvedAt: json['approved_at'] == null
+      ? null
+      : DateTime.parse(json['approved_at'] as String),
+  updatedAt: json['updated_at'] == null
+      ? null
+      : DateTime.parse(json['updated_at'] as String),
+  halalRequired: json['halal_required'] as bool? ?? false,
+  ingredients:
+      (json['ingredients'] as List<dynamic>?)
+          ?.map(
+            (e) => TechnicalCardIngredientModel.fromJson(
+              e as Map<String, dynamic>,
             ),
-      photoUrls:
-          (json['photo_urls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          const [],
-    );
+          )
+          .toList() ??
+      const [],
+  code: json['code'] as String?,
+  createdAt: json['created_at'] == null
+      ? null
+      : DateTime.parse(json['created_at'] as String),
+  createdBy: (json['created_by'] as num?)?.toInt(),
+  isLatest: json['is_latest'] as bool? ?? false,
+  approvalReason: json['approval_reason'] as String?,
+  steps:
+      (json['steps'] as List<dynamic>?)
+          ?.map(
+            (e) => TechnicalCardStepModel.fromJson(e as Map<String, dynamic>),
+          )
+          .toList() ??
+      const [],
+  cookingSteps:
+      (json['cooking_steps'] as List<dynamic>?)
+          ?.map(
+            (e) => TechnicalCardCookingStep.fromJson(e as Map<String, dynamic>),
+          )
+          .toList() ??
+      const [],
+  compliance: json['compliance_summary'] == null
+      ? null
+      : TechnicalCardCompliance.fromJson(
+          json['compliance_summary'] as Map<String, dynamic>,
+        ),
+  photoUrls:
+      (json['photo_urls'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ??
+      const [],
+);
 
 Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
     <String, dynamic>{
@@ -122,6 +128,7 @@ Map<String, dynamic> _$TechnicalCardModelToJson(TechnicalCardModel instance) =>
       'is_latest': instance.isLatest,
       'approval_reason': instance.approvalReason,
       'steps': instance.steps.map((e) => e.toJson()).toList(),
+      'cooking_steps': instance.cookingSteps.map((e) => e.toJson()).toList(),
       'compliance_summary': instance.compliance?.toJson(),
       'photo_urls': instance.photoUrls,
     };
@@ -149,6 +156,60 @@ Map<String, dynamic> _$TechnicalCardComplianceToJson(
   'halal_compliant': instance.halalCompliant,
 };
 
+TechnicalCardCookingStep _$TechnicalCardCookingStepFromJson(
+  Map<String, dynamic> json,
+) => TechnicalCardCookingStep(
+  id: (json['id'] as num?)?.toInt(),
+  stepOrder: (json['step_order'] as num?)?.toInt() ?? 0,
+  title: json['title'] as String?,
+  instruction: json['instruction'] as String?,
+  cookingMethodId: (json['cooking_method_id'] as num?)?.toInt(),
+  methodCode: json['method_code'] as String?,
+  methodName: json['method_name'] as String?,
+  equipmentId: (json['equipment_id'] as num?)?.toInt(),
+  equipmentCode: json['equipment_code'] as String?,
+  equipmentName: json['equipment_name'] as String?,
+  temperatureC: json['temperature_c'] as num?,
+  durationMinutes: json['duration_minutes'] as num?,
+  humidityPct: json['humidity_pct'] as num?,
+  steamPct: json['steam_pct'] as num?,
+  fanSpeedPct: json['fan_speed_pct'] as num?,
+  targetInternalTempC: json['target_internal_temp_c'] as num?,
+  stage: json['stage'] as String?,
+  ingredientRefs:
+      (json['ingredient_refs'] as List<dynamic>?)
+          ?.map((e) => (e as num).toInt())
+          .toList() ??
+      const [],
+  notes: json['notes'] as String?,
+  chefComment: json['chef_comment'] as String?,
+);
+
+Map<String, dynamic> _$TechnicalCardCookingStepToJson(
+  TechnicalCardCookingStep instance,
+) => <String, dynamic>{
+  'id': instance.id,
+  'step_order': instance.stepOrder,
+  'title': instance.title,
+  'instruction': instance.instruction,
+  'cooking_method_id': instance.cookingMethodId,
+  'method_code': instance.methodCode,
+  'method_name': instance.methodName,
+  'equipment_id': instance.equipmentId,
+  'equipment_code': instance.equipmentCode,
+  'equipment_name': instance.equipmentName,
+  'temperature_c': instance.temperatureC,
+  'duration_minutes': instance.durationMinutes,
+  'humidity_pct': instance.humidityPct,
+  'steam_pct': instance.steamPct,
+  'fan_speed_pct': instance.fanSpeedPct,
+  'target_internal_temp_c': instance.targetInternalTempC,
+  'stage': instance.stage,
+  'ingredient_refs': instance.ingredientRefs,
+  'notes': instance.notes,
+  'chef_comment': instance.chefComment,
+};
+
 TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
   Map<String, dynamic> json,
 ) => TechnicalCardIngredientModel(
@@ -169,6 +230,12 @@ TechnicalCardIngredientModel _$TechnicalCardIngredientModelFromJson(
   lossReferenceId: (json['loss_reference_id'] as num?)?.toInt(),
   lossSource: json['loss_source'] as String?,
   overrideReason: json['override_reason'] as String?,
+  chefComment: json['chef_comment'] as String?,
+  prepComment: json['prep_comment'] as String?,
+  cookingComment: json['cooking_comment'] as String?,
+  servingComment: json['serving_comment'] as String?,
+  methodHint: json['method_hint'] as String?,
+  targetOutput: json['target_output'] as String?,
 );
 
 Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
@@ -190,6 +257,12 @@ Map<String, dynamic> _$TechnicalCardIngredientModelToJson(
   'loss_reference_id': instance.lossReferenceId,
   'loss_source': instance.lossSource,
   'override_reason': instance.overrideReason,
+  'chef_comment': instance.chefComment,
+  'prep_comment': instance.prepComment,
+  'cooking_comment': instance.cookingComment,
+  'serving_comment': instance.servingComment,
+  'method_hint': instance.methodHint,
+  'target_output': instance.targetOutput,
 };
 
 TechnicalCardStepModel _$TechnicalCardStepModelFromJson(
