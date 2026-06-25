@@ -21,6 +21,7 @@ class ServiceTabs extends StatelessWidget {
     MenuServiceType.breakfast => Icons.free_breakfast_rounded,
     MenuServiceType.lunch => Icons.lunch_dining_rounded,
     MenuServiceType.dinner => Icons.dinner_dining_rounded,
+    MenuServiceType.nightLunch => Icons.nightlight_round,
   };
 
   @override

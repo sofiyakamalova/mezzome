@@ -8,10 +8,12 @@ import 'package:mezzome/core/l10n/weekday_labels.dart';
 import 'package:mezzome/core/rbac/permissions.dart';
 import 'package:mezzome/core/theme/theme_palette.dart';
 import 'package:mezzome/core/utils/date_format.dart';
+import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
+import 'package:mezzome/features/dishes/presentation/screens/create_plan_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
 import 'package:mezzome/features/dishes/presentation/screens/production_card_screen.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/day_menu_list.dart';
@@ -50,12 +52,68 @@ class _DishesScreenState extends State<DishesScreen> {
   /// Сетка меню-борда на BLoC. Роль берём из сессии (экран открыт авторизованно).
   late final ProductionGridBloc _gridBloc;
 
+  UserRole? _role;
+
   @override
   void initState() {
     super.initState();
-    final role = sl<AuthSessionCubit>().state.role;
-    _gridBloc = sl<ProductionGridBloc>(param1: role)
+    _role = sl<AuthSessionCubit>().state.role;
+    _gridBloc = sl<ProductionGridBloc>(param1: _role)
       ..add(const GridLoadRequested());
+  }
+
+  /// Тап по пустой ячейке → шторка с подсказкой; планировщику (manager) —
+  /// кнопка «Создать план» (chef планы не создаёт).
+  void _onAddEmpty(DateTime? date, String slotTitle) {
+    final canPlan = _role == UserRole.manager;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                slotTitle.isEmpty ? 'menuGridSlot'.tr() : slotTitle,
+                style: Theme.of(sheetCtx)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              if (date != null) ...[
+                const SizedBox(height: 2),
+                Text(DateFormatUtil.apiDate(date),
+                    style: TextStyle(
+                        color: ThemePalette.onSurfaceMuted(sheetCtx))),
+              ],
+              const SizedBox(height: AppSpacing.md),
+              Text('menuGridEmptySlot'.tr(),
+                  style: TextStyle(
+                      color: ThemePalette.onSurfaceMuted(sheetCtx))),
+              const SizedBox(height: AppSpacing.md),
+              if (canPlan)
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetCtx).pop();
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                          builder: (_) => const CreatePlanScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.add),
+                  label: Text('createPlanTitle'.tr()),
+                  style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48)),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -270,6 +328,10 @@ class _DishesScreenState extends State<DishesScreen> {
                         _selectedDate = date;
                         _viewMode = _MenuViewMode.day;
                       }),
+                      // Тап по пустой ячейке → добавить блюдо. Только менеджер
+                      // (шеф план не создаёт) → у шефа «＋» не показываем.
+                      onAddTap:
+                          _role == UserRole.manager ? _onAddEmpty : null,
                     ),
                   ),
               ],

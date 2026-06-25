@@ -1,4 +1,7 @@
 {
+  "menuGridSlot": "Slot",
+  "menuGridEmptySlot": "No dishes planned for this slot.",
+  "serviceNightLunch": "Night lunch",
   "nutDayDishes": "Dishes of the day",
   "nutDayNoPlan": "No plan for this day",
   "nutDayServed": "Meals: {n}",

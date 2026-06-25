@@ -25,6 +25,7 @@ class ProductionGridTable extends StatefulWidget {
     this.showFinancials = true,
     this.onItemTap,
     this.onDayTap,
+    this.onAddTap,
   });
 
   final List<ProductionPlanGridRow> rows;
@@ -38,6 +39,9 @@ class ProductionGridTable extends StatefulWidget {
 
   /// Тап по заголовку дня недели → открыть этот день целиком (режим «день»).
   final void Function(DateTime date)? onDayTap;
+
+  /// Тап по ПУСТОЙ ячейке (слот без блюд) → добавить блюдо (создать план).
+  final void Function(DateTime? date, String slotTitle)? onAddTap;
 
   @override
   State<ProductionGridTable> createState() => _ProductionGridTableState();
@@ -269,17 +273,29 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
             final selected = key == _selectedKey;
             void select() => setState(() => _selectedKey = key);
 
+            final isEmpty = cell?.items.isEmpty ?? true;
+            final cellDate =
+                DateTime.tryParse(cell?.date ?? day.date ?? '');
+            final canAdd = isEmpty && widget.onAddTap != null;
+
             return _card(
               width: dayW,
               background: _cellBg(context),
               raised: true,
               selected: selected,
               alignment: Alignment.topLeft,
-              onTap: select,
+              onTap: canAdd
+                  ? () {
+                      select();
+                      widget.onAddTap!(
+                          cellDate, row.slotTitle ?? row.slotKey ?? '');
+                    }
+                  : select,
               child: _DayCell(
                 cell: cell,
-                date: DateTime.tryParse(cell?.date ?? ''),
+                date: cellDate,
                 showFinancials: widget.showFinancials,
+                canAdd: canAdd,
                 onItemTap: widget.onItemTap,
                 onSelect: select,
               ),
@@ -351,6 +367,7 @@ class _DayCell extends StatelessWidget {
     required this.cell,
     required this.date,
     required this.showFinancials,
+    this.canAdd = false,
     this.onItemTap,
     this.onSelect,
   });
@@ -358,6 +375,7 @@ class _DayCell extends StatelessWidget {
   final ProductionPlanGridCell? cell;
   final DateTime? date;
   final bool showFinancials;
+  final bool canAdd;
   final void Function(ProductionPlanGridCellItem item, DateTime? date)?
   onItemTap;
   final VoidCallback? onSelect;
@@ -366,10 +384,17 @@ class _DayCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = cell?.items ?? const [];
     if (items.isEmpty) {
-      return Text(
-        '—',
-        style: TextStyle(color: ThemePalette.onSurfaceMuted(context)),
-      );
+      // Пустой слот: бледный «＋» как подсказка «можно добавить блюдо».
+      final muted = ThemePalette.onSurfaceMuted(context);
+      if (canAdd) {
+        return Row(children: [
+          Icon(Icons.add_rounded, size: 16, color: muted),
+          const SizedBox(width: 4),
+          Text('добавить',
+              style: TextStyle(color: muted, fontSize: 11)),
+        ]);
+      }
+      return Text('—', style: TextStyle(color: muted));
     }
 
     return Column(

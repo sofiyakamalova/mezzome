@@ -1,4 +1,7 @@
 {
+  "menuGridSlot": "Слот",
+  "menuGridEmptySlot": "Бұл слотқа тағам жоспарланбаған.",
+  "serviceNightLunch": "Түнгі түскі ас",
   "nutDayDishes": "Күн тағамдары",
   "nutDayNoPlan": "Бұл күнге жоспар жоқ",
   "nutDayServed": "Порция: {n}",
