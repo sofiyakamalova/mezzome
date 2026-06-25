@@ -1,4 +1,9 @@
 {
+  "nutDayDishes": "Dishes of the day",
+  "nutDayNoPlan": "No plan for this day",
+  "nutDayServed": "Meals: {n}",
+  "nutNightDinner": "Night supper",
+  "nutGrpNightDinner": "Night supper",
   "tcpCategoryRequired": "Select a dish category",
   "ingPriceRequired": "Enter a price greater than 0",
   "settingsManageSection": "Management",

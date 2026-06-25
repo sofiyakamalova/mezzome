@@ -24,6 +24,7 @@ class ProductionGridTable extends StatefulWidget {
     this.serviceTitle,
     this.showFinancials = true,
     this.onItemTap,
+    this.onDayTap,
   });
 
   final List<ProductionPlanGridRow> rows;
@@ -34,6 +35,9 @@ class ProductionGridTable extends StatefulWidget {
   /// Тап по блюду: блюдо + дата дня (для открытия техкарты).
   final void Function(ProductionPlanGridCellItem item, DateTime? date)?
   onItemTap;
+
+  /// Тап по заголовку дня недели → открыть этот день целиком (режим «день»).
+  final void Function(DateTime date)? onDayTap;
 
   @override
   State<ProductionGridTable> createState() => _ProductionGridTableState();
@@ -178,17 +182,35 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
         child: Text('gridRowHeader'.tr(), style: mutedStyle),
       ),
       for (final day in days)
-        _card(
+        () {
+          final date = DateTime.tryParse(day.date ?? '');
+          final tappable = widget.onDayTap != null && date != null;
+          return _card(
           width: dayW,
           background: headerBg,
           alignment: Alignment.center,
+          onTap: tappable ? () => widget.onDayTap!(date) : null,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                (day.weekdayTitle ?? day.weekday ?? '—').toUpperCase(),
-                style: mutedStyle,
-                textAlign: TextAlign.center,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      (day.weekdayTitle ?? day.weekday ?? '—').toUpperCase(),
+                      style: mutedStyle,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (tappable) ...[
+                    const SizedBox(width: 3),
+                    Icon(Icons.open_in_full,
+                        size: 10,
+                        color: ThemePalette.onSurfaceMuted(context)),
+                  ],
+                ],
               ),
               const SizedBox(height: 2),
               Text(
@@ -207,7 +229,8 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
               ),
             ],
           ),
-        ),
+        );
+      }(),
     ];
   }
 

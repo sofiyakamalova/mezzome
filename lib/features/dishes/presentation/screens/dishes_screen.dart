@@ -13,7 +13,7 @@ import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
 import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
-import 'package:mezzome/features/dishes/presentation/screens/tech_card_page.dart';
+import 'package:mezzome/features/dishes/presentation/screens/production_card_screen.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/day_menu_list.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/menu_dashboard_app_bar_title.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/production_grid_table.dart';
@@ -64,12 +64,14 @@ class _DishesScreenState extends State<DishesScreen> {
     super.dispose();
   }
 
-  /// Прокручиваемая лента дат: неделя до текущей + ~6 недель вперёд.
+  /// Прокручиваемая лента дат: ~6 недель до текущей и ~6 недель вперёд —
+  /// чтобы листать и прошлый месяц, и будущий. Выбор даты из другой недели
+  /// догружает сетку на эту неделю (см. onSelect → GridLoadRequested).
   List<DateTime> _stripDates() {
     final start = DateFormatUtil.startOfWeek(
       DateFormatUtil.today,
-    ).subtract(const Duration(days: 7));
-    return List.generate(49, (i) => start.add(Duration(days: i)));
+    ).subtract(const Duration(days: 42));
+    return List.generate(91, (i) => start.add(Duration(days: i)));
   }
 
   /// День сетки, соответствующий [date] (null, если загружена другая неделя).
@@ -88,18 +90,18 @@ class _DishesScreenState extends State<DishesScreen> {
 
   /// Тап по блюду в сетке → полноэкранная страница техкарты. Редактирование
   /// по-прежнему через bottom-sheet (кнопка «Редактировать» на странице).
+  /// Тап по блюду в меню → «Производственная карта» (техкарта × план-порции +
+  /// факт), а не сырой норматив. Норматив-данные грузятся из техкарты блюда.
   Future<void> _openTechCardPage({
     required ProductionPlanGridCellItem item,
     required DateTime? date,
     required String signature,
     required bool showFinancials,
   }) {
-    return TechCardPage.open(
+    return ProductionCardScreen.open(
       context,
       item: item,
       date: date,
-      signature: signature,
-      showFinancials: showFinancials,
       onEdit: () => _openGridDishSheet(
         item: item,
         date: date,
@@ -262,6 +264,12 @@ class _DishesScreenState extends State<DishesScreen> {
                         signature: signature,
                         showFinancials: showFinancials,
                       ),
+                      // Тап по дню недели → открыть этот день целиком
+                      // (переключение сетки в режим «день» на эту дату).
+                      onDayTap: (date) => setState(() {
+                        _selectedDate = date;
+                        _viewMode = _MenuViewMode.day;
+                      }),
                     ),
                   ),
               ],
@@ -391,9 +399,13 @@ class _DayStripState extends State<_DayStrip> {
   static const double _sep = AppSpacing.xs;
   final _controller = ScrollController();
 
+  /// Дата в центре видимой части ленты — по ней показываем месяц в шапке.
+  late DateTime _centerDate = widget.selectedDate;
+
   @override
   void initState() {
     super.initState();
+    _controller.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
   }
 
@@ -404,14 +416,31 @@ class _DayStripState extends State<_DayStrip> {
       oldWidget.selectedDate,
       widget.selectedDate,
     )) {
+      _centerDate = widget.selectedDate;
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
     }
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onScroll);
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Обновляет месяц в шапке по центральной дате при прокрутке ленты.
+  void _onScroll() {
+    if (!_controller.hasClients) return;
+    final center = _controller.offset +
+        _controller.position.viewportDimension / 2 -
+        AppSpacing.sm;
+    final idx = (center / (_chipWidth + _sep))
+        .floor()
+        .clamp(0, widget.dates.length - 1);
+    final d = widget.dates[idx];
+    if (d.month != _centerDate.month || d.year != _centerDate.year) {
+      setState(() => _centerDate = d);
+    }
   }
 
   void _scrollToSelected() {
@@ -434,13 +463,27 @@ class _DayStripState extends State<_DayStrip> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 66,
-      child: ListView.separated(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
-        itemCount: widget.dates.length,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, 0, AppSpacing.md, 4),
+          child: Text(
+            DateFormatUtil.formatMonthYear(
+                _centerDate, context.locale.toString()),
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+        ),
+        SizedBox(
+          height: 66,
+          child: ListView.separated(
+            controller: _controller,
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
+            itemCount: widget.dates.length,
         separatorBuilder: (_, _) => const SizedBox(width: _sep),
         itemBuilder: (context, index) {
           final date = widget.dates[index];
@@ -456,7 +499,9 @@ class _DayStripState extends State<_DayStrip> {
             onTap: () => widget.onSelect(date),
           );
         },
-      ),
+          ),
+        ),
+      ],
     );
   }
 }

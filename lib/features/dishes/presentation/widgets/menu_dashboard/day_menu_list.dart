@@ -50,23 +50,25 @@ class DayMenuList extends StatelessWidget {
 
     final border = ThemePalette.border(context);
 
-    final cardChildren = <Widget>[];
-    for (var si = 0; si < sections.length; si++) {
-      final s = sections[si];
+    // Каждая категория — отдельная карточка (с отступом между ними), чтобы
+    // позиции дня визуально отделялись друг от друга.
+    Widget sectionCard(
+      ({ProductionPlanGridRow row, ProductionPlanGridCell cell}) s,
+    ) {
       final cellDate = DateTime.tryParse(s.cell.date ?? selectedDay.date ?? '');
-      cardChildren.add(
+      final children = <Widget>[
         _SectionHeader(
           title: s.row.slotTitle ?? s.row.slotKey ?? '—',
-          showTopBorder: si > 0,
+          showTopBorder: false,
         ),
-      );
+      ];
       for (var ii = 0; ii < s.cell.items.length; ii++) {
         if (ii > 0) {
-          cardChildren.add(
+          children.add(
             Divider(height: 1, thickness: 1, color: border, indent: AppSpacing.md),
           );
         }
-        cardChildren.add(
+        children.add(
           _DayMenuTile(
             item: s.cell.items[ii],
             showFinancials: showFinancials,
@@ -75,28 +77,39 @@ class DayMenuList extends StatelessWidget {
           ),
         );
       }
+      return Container(
+        decoration: BoxDecoration(
+          color: ThemePalette.surfaceCard(context),
+          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+          border: Border.all(color: border),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: children,
+        ),
+      );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _DaySummaryHeader(day: selectedDay),
-        Container(
-          margin: const EdgeInsets.fromLTRB(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
             AppSpacing.md,
             AppSpacing.sm,
             AppSpacing.md,
             AppSpacing.md,
           ),
-          decoration: BoxDecoration(
-            color: ThemePalette.surfaceCard(context),
-            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-            border: Border.all(color: border),
-          ),
-          clipBehavior: Clip.antiAlias,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: cardChildren,
+            children: [
+              for (var si = 0; si < sections.length; si++) ...[
+                if (si > 0) const SizedBox(height: AppSpacing.sm),
+                sectionCard(sections[si]),
+              ],
+            ],
           ),
         ),
       ],

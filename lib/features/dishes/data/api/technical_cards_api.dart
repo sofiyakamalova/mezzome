@@ -19,6 +19,12 @@ abstract class TechnicalCardsApi {
   Future<TechnicalCardModel> getTechnicalCard(@Path('id') int id);
 
   /// Создание техкарты с нуля (`POST /chef/technical-cards`).
+  /// Предпросмотр расчёта техкарты (`POST /chef/technical-cards/preview`):
+  /// принимает body как создание ТК, НЕ сохраняет, возвращает рассчитанную
+  /// карту. Тело и ответ пока сырые (Map/dynamic) — изучаем формат бэка.
+  @POST('/chef/technical-cards/preview')
+  Future<dynamic> previewTechnicalCard(@Body() Map<String, dynamic> body);
+
   @POST('/chef/technical-cards')
   Future<TechnicalCardModel> createTechnicalCard(
     @Body() CreateTechnicalCardRequest request,

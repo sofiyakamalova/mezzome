@@ -145,15 +145,23 @@ String? _redirect(AuthSessionState authSession, GoRouterState state) {
   final location = state.matchedLocation;
   final onLogin = location == AppRoutes.login;
 
+  // Уводя на /login (сессия ещё грузится или гость), запоминаем исходный
+  // маршрут в ?from=…, чтобы после авторизации вернуть пользователя на ту же
+  // страницу (а не на домашнюю). Это и даёт «refresh остаётся на той вкладке».
+  String loginWithFrom() {
+    if (onLogin) return AppRoutes.login;
+    return '${AppRoutes.login}?from=${Uri.encodeComponent(state.uri.toString())}';
+  }
+
   if (authSession.isLoading) {
-    return onLogin ? null : AppRoutes.login;
+    return onLogin ? null : loginWithFrom();
   }
 
   final user = authSession.user;
   final isAuthenticated = user != null;
 
   if (!isAuthenticated) {
-    final target = onLogin ? null : AppRoutes.login;
+    final target = onLogin ? null : loginWithFrom();
     if (kDebugMode && target != null) {
       appLogger.i('Redirect → $target (unauthenticated)');
     }
@@ -161,9 +169,12 @@ String? _redirect(AuthSessionState authSession, GoRouterState state) {
   }
 
   if (onLogin) {
-    final home = _homeForRole(user.role);
-    appLogger.i('Redirect → $home (${user.role.apiValue})');
-    return home;
+    final from = state.uri.queryParameters['from'];
+    final target = (from != null && from.isNotEmpty && from != AppRoutes.login)
+        ? from
+        : _homeForRole(user.role);
+    appLogger.i('Redirect → $target (${user.role.apiValue})');
+    return target;
   }
 
   if (location == AppRoutes.dashboard &&

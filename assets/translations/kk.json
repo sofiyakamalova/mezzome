@@ -1,4 +1,9 @@
 {
+  "nutDayDishes": "Күн тағамдары",
+  "nutDayNoPlan": "Бұл күнге жоспар жоқ",
+  "nutDayServed": "Порция: {n}",
+  "nutNightDinner": "Түнгі ас",
+  "nutGrpNightDinner": "Түнгі ас",
   "tcpCategoryRequired": "Тағам санатын таңдаңыз",
   "ingPriceRequired": "0-ден жоғары баға енгізіңіз",
   "settingsManageSection": "Басқару",

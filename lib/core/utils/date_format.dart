@@ -35,6 +35,12 @@ abstract final class DateFormatUtil {
     return DateFormat('EEEE, d MMMM', locale).format(local);
   }
 
+  /// Месяц + год, e.g. «Июнь 2026» (для шапки ленты дат в режиме «День»).
+  static String formatMonthYear(DateTime date, String locale) {
+    final s = DateFormat('LLLL yyyy', locale).format(date);
+    return s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+  }
+
   /// Short weekday + day + month + year (e.g. «Чт, 22 июня 2026 года»).
   static String formatScheduleDateLong(DateTime date, String locale) {
     final local = DateTime(date.year, date.month, date.day);

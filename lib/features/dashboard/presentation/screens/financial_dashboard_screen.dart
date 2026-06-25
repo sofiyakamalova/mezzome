@@ -1201,6 +1201,8 @@ class _NutritionContent extends StatelessWidget {
     final breakfast = data.mealByCode('BREAKFAST');
     final lunch = data.mealByCode('LUNCH');
     final dinner = data.mealByCode('DINNER');
+    // Ночной ужин — на бэке service_type=night_lunch (код NIGHT_LUNCH).
+    final nightDinner = data.mealByCode('NIGHT_LUNCH');
 
     String mealSub(NutritionMealPeriod? mp) =>
         mp == null ? '' : formatPercent(mp.sharePct);
@@ -1216,6 +1218,7 @@ class _NutritionContent extends StatelessWidget {
     final lime = AppColors.profitGreen;
     const blue = Color(0xFF4AA8FF);
     final red = AppColors.dangerRed;
+    const violet = Color(0xFF9B7BFF);
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.md),
@@ -1235,6 +1238,7 @@ class _NutritionContent extends StatelessWidget {
             mealKpi('nutBreakfast', breakfast, lime),
             mealKpi('nutLunch', lunch, blue),
             mealKpi('nutDinner', dinner, red),
+            mealKpi('nutNightDinner', nightDinner, violet),
             _Kpi(
               label: 'nutCpmDinner'.tr(),
               value: m(dinner?.averageCostPerMeal ?? s.averageCostPerMeal),
@@ -1312,6 +1316,7 @@ class _NutritionDailyTable extends StatelessWidget {
     final lime = AppColors.profitGreen;
     const blue = Color(0xFF4AA8FF);
     final red = AppColors.dangerRed;
+    const violet = Color(0xFF9B7BFF);
     final border = ThemePalette.border(context);
 
     // Флексы колонок — общие для шапки и строк, чтобы всё было выровнено.
@@ -1374,6 +1379,7 @@ class _NutritionDailyTable extends StatelessWidget {
             cellRight(fSum, money(d.mealByCode('BREAKFAST')?.totalCost ?? 0)),
             cellRight(fSum, money(d.mealByCode('LUNCH')?.totalCost ?? 0)),
             cellRight(fSum, money(d.mealByCode('DINNER')?.totalCost ?? 0)),
+            cellRight(fSum, money(d.mealByCode('NIGHT_LUNCH')?.totalCost ?? 0)),
             cellRight(fCpm, money(d.mealByCode('DINNER')?.averageCostPerMeal ?? 0)),
             cellRight(fTotal, money(d.totalCost, bold: true)),
             cellRight(
@@ -1399,6 +1405,7 @@ class _NutritionDailyTable extends StatelessWidget {
               group(fSum, 'nutGrpBreakfast', lime),
               group(fSum, 'nutGrpLunch', blue),
               group(fSum, 'nutGrpDinner', red),
+              group(fSum, 'nutGrpNightDinner', violet),
               group(fTotalGroup, 'nutGrpTotal', lime),
             ],
           ),
@@ -1412,6 +1419,7 @@ class _NutritionDailyTable extends StatelessWidget {
               cellLeft(fDay, headTxt('nutColDay')),
               cellRight(fSum, headTxt('nutColSum')),
               cellRight(fSum, headTxt('nutColLunch')),
+              cellRight(fSum, headTxt('nutColSum')),
               cellRight(fSum, headTxt('nutColSum')),
               cellRight(fCpm, headTxt('nutColCpm')),
               cellRight(fTotal, headTxt('nutColTotal')),
@@ -1434,6 +1442,7 @@ class _NutritionDailyTable extends StatelessWidget {
               cellRight(fSum, money(_sumMeal('BREAKFAST'), bold: true)),
               cellRight(fSum, money(_sumMeal('LUNCH'), bold: true)),
               cellRight(fSum, money(_sumMeal('DINNER'), bold: true)),
+              cellRight(fSum, money(_sumMeal('NIGHT_LUNCH'), bold: true)),
               cellRight(fCpm, money(dinnerAvg, bold: true)),
               cellRight(fTotal, money(data.summary.totalCost, bold: true)),
               const Expanded(flex: fDelta, child: SizedBox()),
@@ -1452,7 +1461,7 @@ class _NutritionDailyTable extends StatelessWidget {
     // фиксируем минимум и включаем горизонтальный скролл.
     return LayoutBuilder(
       builder: (context, c) {
-        const minW = 680.0;
+        const minW = 780.0;
         final fits = c.maxWidth >= minW;
         final content = SizedBox(width: fits ? c.maxWidth : minW, child: table);
         if (fits) return content;

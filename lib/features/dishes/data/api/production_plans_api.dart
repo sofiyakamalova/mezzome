@@ -80,6 +80,13 @@ abstract class ProductionPlansApi {
     @Query('include_loss') bool? includeLoss,
   });
 
+  /// План/факт по позиции плана
+  /// (`GET /production/plan-items/{id}/plan-vs-actual`): per-ingredient выход,
+  /// потери, план/факт, отклонения + summary. Ответ нетипизирован (нет в
+  /// swagger). Может вернуть 404, пока производство не началось.
+  @GET('/production/plan-items/{id}/plan-vs-actual')
+  Future<dynamic> getPlanItemPlanVsActual(@Path('id') int planItemId);
+
   /// Правка ячейки плана менеджером
   /// (`PATCH /manager/production-plan-items/{id}`) — manager составляет план
   /// через сетку. Контракт тела тот же, что у chef-ручки.

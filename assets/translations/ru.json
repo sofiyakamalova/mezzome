@@ -1,4 +1,9 @@
 {
+  "nutDayDishes": "Блюда дня",
+  "nutDayNoPlan": "Нет плана на этот день",
+  "nutDayServed": "Порций: {n}",
+  "nutNightDinner": "Ночной ужин",
+  "nutGrpNightDinner": "Ночной ужин",
   "tcpCategoryRequired": "Выберите категорию блюда",
   "ingPriceRequired": "Укажите цену больше 0",
   "settingsManageSection": "Управление",
