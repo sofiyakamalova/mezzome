@@ -120,6 +120,11 @@ abstract class ProductionPlansApi {
     @Body() ProductionPlanCreateRequest request,
   );
 
+  /// Активировать план шефа (`POST /chef/production-plans/{id}/activate`) —
+  /// из draft в рабочий: бэк пересчитывает сырьё и плодит задачи подготовки.
+  @POST('/chef/production-plans/{id}/activate')
+  Future<dynamic> activateChefPlan(@Path('id') int id);
+
   /// Проверка остатков по плану — завершающее действие перед согласованием
   /// (`dto.ProductionPlanStockCheckResponse`).
   @POST('/chef/production-plans/{id}/check-stock')

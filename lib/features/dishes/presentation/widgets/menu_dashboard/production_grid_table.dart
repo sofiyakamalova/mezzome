@@ -26,6 +26,7 @@ class ProductionGridTable extends StatefulWidget {
     this.onItemTap,
     this.onDayTap,
     this.onAddTap,
+    this.onAddSlot,
   });
 
   final List<ProductionPlanGridRow> rows;
@@ -41,7 +42,12 @@ class ProductionGridTable extends StatefulWidget {
   final void Function(DateTime date)? onDayTap;
 
   /// Тап по ПУСТОЙ ячейке (слот без блюд) → добавить блюдо (создать план).
-  final void Function(DateTime? date, String slotTitle)? onAddTap;
+  final void Function(DateTime? date, String? slotKey, String slotTitle)?
+      onAddTap;
+
+  /// Тап по «＋ Добавить слот» под списком слотов (крайний левый столбец).
+  /// Создаёт локальную строку-слот; на backend сохранится при первом блюде.
+  final VoidCallback? onAddSlot;
 
   @override
   State<ProductionGridTable> createState() => _ProductionGridTableState();
@@ -87,7 +93,7 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
           ),
           const _GridLegend(),
           Divider(height: 1, thickness: 1, color: border),
-          if (rows.isEmpty || days.isEmpty)
+          if (days.isEmpty)
             Padding(
               padding: const EdgeInsets.all(AppSpacing.lg),
               child: Text(
@@ -136,6 +142,10 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
                 const SizedBox(height: _gap),
                 _gridRow(_bodyCells(context, row, days, catW, dayW)),
               ],
+              if (widget.onAddSlot != null) ...[
+                const SizedBox(height: _gap),
+                _addSlotRow(context, catW),
+              ],
             ],
           );
 
@@ -162,6 +172,50 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
+      ),
+    );
+  }
+
+  /// «＋ Добавить слот» — кнопка в крайнем левом столбце, под списком слотов.
+  Widget _addSlotRow(BuildContext context, double catW) {
+    final accent = ThemePalette.accent(context);
+    return SizedBox(
+      width: catW,
+      child: Material(
+        color: _secondaryBg(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
+          side: BorderSide(color: ThemePalette.border(context)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: widget.onAddSlot,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.xs,
+              vertical: AppSpacing.xs,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.add, size: 16, color: accent),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    'menuAddSlot'.tr(),
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -287,8 +341,8 @@ class _ProductionGridTableState extends State<ProductionGridTable> {
               onTap: canAdd
                   ? () {
                       select();
-                      widget.onAddTap!(
-                          cellDate, row.slotTitle ?? row.slotKey ?? '');
+                      widget.onAddTap!(cellDate, row.slotKey,
+                          row.slotTitle ?? row.slotKey ?? '');
                     }
                   : select,
               child: _DayCell(

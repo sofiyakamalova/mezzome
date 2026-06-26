@@ -299,6 +299,20 @@ class DishesRepository {
     return plan;
   }
 
+  /// Активировать план шефа (`POST /chef/production-plans/{id}/activate`):
+  /// из draft → рабочий. Бэк пересчитывает сырьё и создаёт задачи подготовки.
+  Future<void> activateChefPlan(int planId) async {
+    appLogger.i('POST activate chef plan $planId…');
+    await _productionPlansApi.activateChefPlan(planId);
+    appLogger.i('Plan $planId activated');
+  }
+
+  /// Каталог блюд меню (для пикера «добавить блюдо в слот»). chef → common.
+  Future<List<DishModel>> loadCatalogDishes() async {
+    final res = await _dishesApi.getCommonMenuItems();
+    return res.items;
+  }
+
   /// Проверка остатков по плану: хватает ли, дефициты и общая стоимость.
   Future<ProductionPlanStockCheck> checkStock(int planId) async {
     final role = _session.role;

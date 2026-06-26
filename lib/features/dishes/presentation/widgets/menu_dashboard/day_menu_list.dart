@@ -15,15 +15,34 @@ class DayMenuList extends StatelessWidget {
     super.key,
     required this.rows,
     required this.day,
+    required this.selectedDate,
     required this.showFinancials,
     required this.onItemTap,
+    this.onAddTap,
+    this.onAddSlot,
+    this.localSlots = const [],
   });
 
   final List<ProductionPlanGridRow> rows;
   final ProductionPlanGridDay? day;
+
+  /// Дата просматриваемого дня — нужна, чтобы добавлять блюда даже когда план
+  /// на этот день ещё пуст ([day] == null).
+  final DateTime selectedDate;
   final bool showFinancials;
   final void Function(ProductionPlanGridCellItem item, DateTime? date)?
   onItemTap;
+
+  /// Добавить блюдо в план дня. (date, slotKey, slotTitle) — как в сетке.
+  final void Function(DateTime date, String? slotKey, String slotTitle)?
+  onAddTap;
+
+  /// «＋ Добавить слот» — новая локальная строка-категория (как в сетке).
+  final VoidCallback? onAddSlot;
+
+  /// Локальные слоты (ещё без блюд) — показываем пустыми карточками, чтобы в
+  /// них можно было добавить первое блюдо прямо из режима «день».
+  final List<({String key, String title})> localSlots;
 
   @override
   Widget build(BuildContext context) {
@@ -44,11 +63,30 @@ class DayMenuList extends StatelessWidget {
       }
     }
 
-    if (sections.isEmpty) {
+    // Локальные слоты, ещё не наполненные блюдами (нет среди sections).
+    final filledKeys =
+        sections.map((s) => s.row.slotKey).whereType<String>().toSet();
+    final emptySlots =
+        localSlots.where((s) => !filledKeys.contains(s.key)).toList();
+
+    if (sections.isEmpty && emptySlots.isEmpty) {
       return _empty(context);
     }
 
     final border = ThemePalette.border(context);
+
+    Widget cardShell(List<Widget> children) => Container(
+          decoration: BoxDecoration(
+            color: ThemePalette.surfaceCard(context),
+            borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+            border: Border.all(color: border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        );
 
     // Каждая категория — отдельная карточка (с отступом между ними), чтобы
     // позиции дня визуально отделялись друг от друга.
@@ -57,10 +95,7 @@ class DayMenuList extends StatelessWidget {
     ) {
       final cellDate = DateTime.tryParse(s.cell.date ?? selectedDay.date ?? '');
       final children = <Widget>[
-        _SectionHeader(
-          title: s.row.slotTitle ?? s.row.slotKey ?? '—',
-          showTopBorder: false,
-        ),
+        _SectionHeader(title: s.row.slotTitle ?? s.row.slotKey ?? '—'),
       ];
       for (var ii = 0; ii < s.cell.items.length; ii++) {
         if (ii > 0) {
@@ -77,18 +112,44 @@ class DayMenuList extends StatelessWidget {
           ),
         );
       }
-      return Container(
-        decoration: BoxDecoration(
-          color: ThemePalette.surfaceCard(context),
-          borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(color: border),
+      if (onAddTap != null) {
+        children.add(Divider(height: 1, thickness: 1, color: border));
+        children.add(
+          _AddTile(
+            label: 'menuAddDish'.tr(),
+            onTap: () => onAddTap!(
+              cellDate ?? selectedDate,
+              s.row.slotKey,
+              s.row.slotTitle ?? '',
+            ),
+          ),
+        );
+      }
+      return cardShell(children);
+    }
+
+    // Пустой локальный слот: заголовок + подсказка + «＋ Добавить блюдо».
+    Widget emptySlotCard(({String key, String title}) slot) {
+      return cardShell([
+        _SectionHeader(title: slot.title),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+              AppSpacing.md, 10, AppSpacing.md, 2),
+          child: Text(
+            'menuGridEmptySlot'.tr(),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: ThemePalette.onSurfaceMuted(context),
+                ),
+          ),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: children,
-        ),
-      );
+        if (onAddTap != null) ...[
+          Divider(height: 1, thickness: 1, color: border),
+          _AddTile(
+            label: 'menuAddDish'.tr(),
+            onTap: () => onAddTap!(selectedDate, slot.key, slot.title),
+          ),
+        ],
+      ]);
     }
 
     return Column(
@@ -109,6 +170,18 @@ class DayMenuList extends StatelessWidget {
                 if (si > 0) const SizedBox(height: AppSpacing.sm),
                 sectionCard(sections[si]),
               ],
+              for (final slot in emptySlots) ...[
+                if (sections.isNotEmpty || emptySlots.first != slot)
+                  const SizedBox(height: AppSpacing.sm),
+                emptySlotCard(slot),
+              ],
+              const SizedBox(height: AppSpacing.sm),
+              _DayActions(
+                onAddDish: onAddTap == null
+                    ? null
+                    : () => onAddTap!(selectedDate, null, ''),
+                onAddSlot: onAddSlot,
+              ),
             ],
           ),
         ),
@@ -135,6 +208,13 @@ class DayMenuList extends StatelessWidget {
                 color: ThemePalette.onSurfaceMuted(context),
               ),
             ),
+            const SizedBox(height: AppSpacing.md),
+            _DayActions(
+              onAddDish: onAddTap == null
+                  ? null
+                  : () => onAddTap!(selectedDate, null, ''),
+              onAddSlot: onAddSlot,
+            ),
           ],
         ),
       ),
@@ -142,16 +222,58 @@ class DayMenuList extends StatelessWidget {
   }
 }
 
-/// Подзаголовок категории: плотная плашка с лёгким тоном.
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, required this.showTopBorder});
+/// Кнопки действий дня: «＋ Добавить блюдо» и «＋ Добавить слот».
+class _DayActions extends StatelessWidget {
+  const _DayActions({this.onAddDish, this.onAddSlot});
 
-  final String title;
-  final bool showTopBorder;
+  final VoidCallback? onAddDish;
+  final VoidCallback? onAddSlot;
 
   @override
   Widget build(BuildContext context) {
-    final border = ThemePalette.border(context);
+    final accent = ThemePalette.accent(context);
+    return Row(
+      children: [
+        if (onAddDish != null)
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: onAddDish,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text('menuAddDish'.tr()),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+              ),
+            ),
+          ),
+        if (onAddDish != null && onAddSlot != null)
+          const SizedBox(width: AppSpacing.sm),
+        if (onAddSlot != null)
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: onAddSlot,
+              icon: Icon(Icons.playlist_add, size: 18, color: accent),
+              label: Text('menuAddSlot'.tr(),
+                  style: TextStyle(color: accent)),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(44),
+                side: BorderSide(color: accent.withValues(alpha: 0.5)),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Подзаголовок категории: акцентная плашка с цветной полоской слева.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = ThemePalette.accent(context);
     final tint = ThemePalette.isLight(context)
         ? AppColorsLight.surfaceSecondary
         : AppColors.surfaceElevated;
@@ -159,20 +281,67 @@ class _SectionHeader extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(
         horizontal: AppSpacing.md,
-        vertical: AppSpacing.xs + 2,
+        vertical: AppSpacing.xs + 3,
       ),
-      decoration: BoxDecoration(
-        color: tint,
-        border: Border(
-          top: showTopBorder ? BorderSide(color: border) : BorderSide.none,
+      decoration: BoxDecoration(color: tint),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 14,
+            margin: const EdgeInsets.only(right: AppSpacing.xs + 2),
+            decoration: BoxDecoration(
+              color: accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              title.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+                color: ThemePalette.onSurface(context),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Плотная строка-кнопка «＋ добавить блюдо» в подвале карточки категории.
+class _AddTile extends StatelessWidget {
+  const _AddTile({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = ThemePalette.accent(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.md,
+          vertical: 10,
         ),
-      ),
-      child: Text(
-        title.toUpperCase(),
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
-          color: ThemePalette.onSurfaceMuted(context),
+        child: Row(
+          children: [
+            Icon(Icons.add, size: 18, color: accent),
+            const SizedBox(width: AppSpacing.xs),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -245,16 +414,11 @@ class _DayMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = gridCellStatusFor(item);
+    final muted = ThemePalette.onSurfaceMuted(context);
     final total = item.theoreticalCost;
     final cost = (total != null && item.plannedPortions > 0)
         ? total / item.plannedPortions
         : total;
-    final meta = <String>[
-      if (item.plannedPortions > 0)
-        'portionsShort'.tr(namedArgs: {'count': '${item.plannedPortions}'}),
-      if (showFinancials && cost != null)
-        'costPerPortionShort'.tr(namedArgs: {'cost': cost.toStringAsFixed(0)}),
-    ];
 
     return InkWell(
       onTap: onTap == null ? null : () => onTap!(item, date),
@@ -265,45 +429,96 @@ class _DayMenuTile extends StatelessWidget {
         ),
         child: Row(
           children: [
+            // Цветной чип статуса — заметный, вместо бледной точки.
             Container(
               margin: const EdgeInsets.only(right: AppSpacing.sm),
-              width: 8,
-              height: 8,
+              width: 38,
+              height: 38,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: status.color,
-                shape: BoxShape.circle,
+                color: status.color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
               ),
+              child: Icon(Icons.restaurant_rounded,
+                  size: 19, color: status.color),
             ),
             Expanded(
-              child: Text(
-                item.menuItemName ?? '—',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    item.menuItemName ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: ThemePalette.onSurface(context),
+                        ),
+                  ),
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      if (item.plannedPortions > 0)
+                        _Pill(
+                          text: 'portionsShort'.tr(
+                              namedArgs: {'count': '${item.plannedPortions}'}),
+                          color: status.color,
+                        ),
+                      if (showFinancials && cost != null) ...[
+                        if (item.plannedPortions > 0)
+                          const SizedBox(width: AppSpacing.xs),
+                        Text(
+                          'costPerPortionShort'
+                              .tr(namedArgs: {'cost': cost.toStringAsFixed(0)}),
+                          style: Theme.of(context)
+                              .textTheme
+                              .labelSmall
+                              ?.copyWith(color: muted),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
               ),
             ),
-            if (meta.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(left: AppSpacing.sm),
-                child: Text(
-                  meta.join(' · '),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: ThemePalette.onSurfaceMuted(context),
-                  ),
-                ),
-              ),
             if (onTap != null)
               Padding(
                 padding: const EdgeInsets.only(left: 4),
                 child: Icon(
                   Icons.chevron_right_rounded,
                   size: 18,
-                  color: ThemePalette.onSurfaceMuted(context),
+                  color: muted,
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Цветная «таблетка» (порции, статус) — тонированный фон + цветной текст.
+class _Pill extends StatelessWidget {
+  const _Pill({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

@@ -12,15 +12,42 @@ import 'package:mezzome/domain/user_role.dart';
 import 'package:mezzome/features/auth/presentation/blocs/auth_session_cubit.dart';
 import 'package:mezzome/features/dishes/domain/models/production_grid.dart';
 import 'package:mezzome/features/dishes/domain/menu_grid_cell.dart';
+import 'package:mezzome/features/dishes/domain/menu_service_type.dart';
 import 'package:mezzome/features/dishes/presentation/blocs/production_grid_bloc.dart';
 import 'package:mezzome/features/dishes/presentation/screens/create_plan_screen.dart';
 import 'package:mezzome/features/dishes/presentation/screens/tech_card_edit_page.dart';
 import 'package:mezzome/features/dishes/presentation/screens/production_card_screen.dart';
+import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/add_dish_to_slot_sheet.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/day_menu_list.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/menu_dashboard_app_bar_title.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/production_grid_table.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/service_tabs.dart';
 import 'package:mezzome/features/dishes/presentation/widgets/menu_dashboard/week_range_selector.dart';
+
+/// Транслитерация кириллицы для slug'а slot_key.
+const _translit = <String, String>{
+  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'e',
+  'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+  'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+  'ф': 'f', 'х': 'h', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '',
+  'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+};
+
+/// slot_key из названия слота: транслит кириллицы → латиница, не-буквенно-
+/// цифровые → `_`, префикс `slot_`. «Супы» → `slot_supy`,
+/// «Позиция 1» → `slot_pozitsiya_1` (см. add_slot.md).
+String _slotKeyFromTitle(String title) {
+  final sb = StringBuffer();
+  for (final ch in title.toLowerCase().split('')) {
+    sb.write(_translit[ch] ?? ch);
+  }
+  var s = sb
+      .toString()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'_+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+  return s.isEmpty ? 'slot' : 'slot_$s';
+}
 
 /// Режим показа меню-борда.
 enum _MenuViewMode {
@@ -54,6 +81,11 @@ class _DishesScreenState extends State<DishesScreen> {
 
   UserRole? _role;
 
+  /// Слоты, добавленные через «＋ Добавить слот». Отдельного endpoint нет: слот
+  /// существует на backend только когда в него добавлено блюдо (см. add_slot.md).
+  /// До этого живёт в UI как пустая строка с готовым slot_key/slot_title.
+  final List<({String key, String title})> _localSlots = [];
+
   @override
   void initState() {
     super.initState();
@@ -62,58 +94,90 @@ class _DishesScreenState extends State<DishesScreen> {
       ..add(const GridLoadRequested());
   }
 
-  /// Тап по пустой ячейке → шторка с подсказкой; планировщику (manager) —
-  /// кнопка «Создать план» (chef планы не создаёт).
-  void _onAddEmpty(DateTime? date, String slotTitle) {
-    final canPlan = _role == UserRole.manager;
-    showModalBottomSheet<void>(
+  /// Backend-строки + локальные слоты, которых ещё нет в ответе сетки.
+  /// Как только слот приходит с backend (по нему добавили блюдо), локальный
+  /// дубликат скрываем по совпадению slot_key.
+  List<ProductionPlanGridRow> _rowsWithLocalSlots(
+    List<ProductionPlanGridRow> backend,
+  ) {
+    if (_localSlots.isEmpty) return backend;
+    final existing = backend.map((r) => r.slotKey).whereType<String>().toSet();
+    return [
+      ...backend,
+      for (final s in _localSlots)
+        if (!existing.contains(s.key))
+          ProductionPlanGridRow(slotKey: s.key, slotTitle: s.title),
+    ];
+  }
+
+  /// «＋ Добавить слот»: спросить название → сгенерировать slot_key → показать
+  /// локальную пустую строку. Блюдо в неё добавляется обычным flow add-to-slot.
+  Future<void> _onAddSlot() async {
+    final title = await _promptSlotTitle();
+    final clean = title?.trim() ?? '';
+    if (clean.isEmpty) return;
+    final key = _slotKeyFromTitle(clean);
+    setState(() {
+      if (!_localSlots.any((s) => s.key == key)) {
+        _localSlots.add((key: key, title: clean));
+      }
+    });
+  }
+
+  Future<String?> _promptSlotTitle() {
+    final controller = TextEditingController();
+    return showDialog<String>(
       context: context,
-      showDragHandle: true,
-      builder: (sheetCtx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSpacing.md, 0, AppSpacing.md, AppSpacing.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                slotTitle.isEmpty ? 'menuGridSlot'.tr() : slotTitle,
-                style: Theme.of(sheetCtx)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              if (date != null) ...[
-                const SizedBox(height: 2),
-                Text(DateFormatUtil.apiDate(date),
-                    style: TextStyle(
-                        color: ThemePalette.onSurfaceMuted(sheetCtx))),
-              ],
-              const SizedBox(height: AppSpacing.md),
-              Text('menuGridEmptySlot'.tr(),
-                  style: TextStyle(
-                      color: ThemePalette.onSurfaceMuted(sheetCtx))),
-              const SizedBox(height: AppSpacing.md),
-              if (canPlan)
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.of(sheetCtx).pop();
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                          builder: (_) => const CreatePlanScreen()),
-                    );
-                  },
-                  icon: const Icon(Icons.add),
-                  label: Text('createPlanTitle'.tr()),
-                  style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48)),
-                ),
-            ],
-          ),
+      builder: (ctx) => AlertDialog(
+        title: Text('menuAddSlot'.tr()),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: InputDecoration(hintText: 'menuSlotNameHint'.tr()),
+          onSubmitted: (v) => Navigator.of(ctx).pop(v),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('cancelButton'.tr()),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(controller.text),
+            child: Text('menuAddSlotConfirm'.tr()),
+          ),
+        ],
       ),
     );
+  }
+
+  /// Тап по пустой ячейке. Шеф → окно «добавить блюдо в слот» (create+activate
+  /// плана). Менеджер → полноценный экран «Создать план».
+  Future<void> _onAddEmpty(
+    DateTime? date,
+    String? slotKey,
+    String slotTitle,
+    MenuServiceType service,
+  ) async {
+    if (date == null) return;
+    if (_role == UserRole.manager) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const CreatePlanScreen()),
+      );
+      if (mounted) _gridBloc.add(const GridRefreshRequested());
+      return;
+    }
+    // Шеф: лёгкое окно добавления блюда в этот слот/день.
+    final added = await AddDishToSlotSheet.open(
+      context,
+      date: date,
+      serviceType: service.apiValue,
+      slotKey: slotKey,
+      slotTitle: slotTitle,
+    );
+    if (added == true && mounted) {
+      _gridBloc.add(const GridRefreshRequested());
+    }
   }
 
   @override
@@ -300,19 +364,27 @@ class _DishesScreenState extends State<DishesScreen> {
                     child: DayMenuList(
                       rows: grid.rows,
                       day: selectedDay,
+                      selectedDate: selectedDate,
                       showFinancials: showFinancials,
+                      localSlots: _localSlots,
                       onItemTap: (item, date) => _openTechCardPage(
                         item: item,
                         date: date,
                         signature: signature,
                         showFinancials: showFinancials,
                       ),
+                      // Добавить блюдо в план этого дня (как в режиме сетки):
+                      // шеф → окно add-to-slot; менеджер → экран «Создать план».
+                      onAddTap: (date, slotKey, slotTitle) =>
+                          _onAddEmpty(date, slotKey, slotTitle, grid.service),
+                      // «＋ Добавить слот» — новая локальная строка-категория.
+                      onAddSlot: _onAddSlot,
                     ),
                   )
                 else
                   SliverToBoxAdapter(
                     child: ProductionGridTable(
-                      rows: grid.rows,
+                      rows: _rowsWithLocalSlots(grid.rows),
                       days: grid.days,
                       serviceTitle: grid.grid?.serviceTypeTitle,
                       showFinancials: showFinancials,
@@ -328,10 +400,12 @@ class _DishesScreenState extends State<DishesScreen> {
                         _selectedDate = date;
                         _viewMode = _MenuViewMode.day;
                       }),
-                      // Тап по пустой ячейке → добавить блюдо. Только менеджер
-                      // (шеф план не создаёт) → у шефа «＋» не показываем.
-                      onAddTap:
-                          _role == UserRole.manager ? _onAddEmpty : null,
+                      // Тап по пустой ячейке → добавить блюдо в слот.
+                      // Шеф → окно add-to-slot; менеджер → экран «Создать план».
+                      onAddTap: (date, slotKey, slotTitle) =>
+                          _onAddEmpty(date, slotKey, slotTitle, grid.service),
+                      // «＋ Добавить слот» — новая локальная строка-категория.
+                      onAddSlot: _onAddSlot,
                     ),
                   ),
               ],

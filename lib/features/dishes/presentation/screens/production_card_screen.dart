@@ -62,17 +62,39 @@ String _fmt(num n, [int d = 0]) {
 
 String _pct(num n, [int d = 1]) => '${_fmt(n * 100, d)}%';
 
-/// Коэффициент перевода единицы в кг/л для наглядных колонок.
-double _unitFactor(String? unit) {
-  switch ((unit ?? '').toLowerCase()) {
+/// Локализованная единица: g/gr→г, kg→кг, ml→мл, l→л, pieces→шт.
+String _unitRu(String? u) {
+  switch ((u ?? '').toLowerCase()) {
+    case 'g':
     case 'gr':
     case 'г':
+      return 'г';
+    case 'kg':
+    case 'кг':
+      return 'кг';
     case 'ml':
     case 'мл':
-      return 0.001;
+      return 'мл';
+    case 'l':
+    case 'л':
+      return 'л';
+    case 'pieces':
+    case 'pcs':
+    case 'шт':
+      return 'шт';
     default:
-      return 1; // kg, l, pieces — как есть
+      return u ?? '';
   }
+}
+
+/// Количество + единица, с переводом г→кг и мл→л для больших значений.
+String _fmtQty(double value, String? unit) {
+  final u = (unit ?? '').toLowerCase();
+  if ((u == 'g' || u == 'gr') && value >= 1000) {
+    return '${_fmt(value / 1000, 1)} кг';
+  }
+  if (u == 'ml' && value >= 1000) return '${_fmt(value / 1000, 1)} л';
+  return '${_fmt(value)} ${_unitRu(unit)}';
 }
 
 class _ProductionCardScreenState extends State<ProductionCardScreen> {
@@ -358,27 +380,26 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
       rows = [
         for (final pr in pv.rows)
           () {
-            final f = _unitFactor(pr.unit);
-            // «Выход»: приоритет — серверный `output`; иначе loss% из
-            // plan-vs-actual; иначе cooking_loss из preview (fallback).
+            // Значения в ЕДИНИЦЕ ингредиента (без нормализации в кг — единицы
+            // у строк разные: шт/г/кг). Выход: серверный `output`, иначе loss%.
             final pvaIng = _pva?.byIngredient[pr.ingredientId];
-            final double outKg;
+            final double out;
             if (pr.output > 0) {
-              outKg = pr.output * f; // серверный выход — сами не считаем
+              out = pr.output;
             } else {
               final lossFrac = pvaIng?.plannedLossPct != null
                   ? pvaIng!.plannedLossPct! / 100
                   : pr.cookLoss;
-              outKg = pr.netto * (1 - lossFrac) * f;
+              out = pr.netto * (1 - lossFrac);
             }
             return _Row(
               priceKey: null,
               ingredientId: pr.ingredientId,
               name: pr.name,
               unit: pr.unit,
-              bruttoKg: pr.brutto * f,
-              nettoKg: pr.netto * f,
-              outKg: outKg,
+              bruttoKg: pr.brutto,
+              nettoKg: pr.netto,
+              outKg: out,
               price: pr.costPerUnit,
               sum: pr.totalCost,
             );
@@ -387,16 +408,15 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     } else {
       // Fallback (пока preview грузится/недоступен) — клиентская пропорция.
       rows = _recipe.map((r) {
-        final f = _unitFactor(r.unit);
         final price = _prices[r.key] ?? r.price;
         return _Row(
           priceKey: r.key,
           ingredientId: r.id,
           name: r.name,
           unit: r.unit,
-          bruttoKg: r.bruttoPP * n * f,
-          nettoKg: r.nettoPP * n * f,
-          outKg: r.outputPP * n * f,
+          bruttoKg: r.bruttoPP * n,
+          nettoKg: r.nettoPP * n,
+          outKg: r.outputPP * n,
           price: price,
           sum: r.bruttoPP * n * price,
         );
@@ -644,13 +664,15 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('${_fmt(c.outKg, 1)} кг',
+                // Выход блюда = output_per_portion × порции (не сумма по строкам,
+                // т.к. ингредиенты в разных единицах).
+                Text(_fmtQty(_outputPerPortion * _portions, _outputUnit),
                     style: TextStyle(
                         color: _txt, fontSize: 24, fontWeight: FontWeight.w700)),
                 const SizedBox(width: 10),
                 Text('·', style: TextStyle(color: _dim2)),
                 const SizedBox(width: 10),
-                Text('${_fmt(c.plateG)} г/порция',
+                Text('${_fmtQty(_outputPerPortion, _outputUnit)}/порц.',
                     style: TextStyle(color: _dim, fontSize: 15)),
               ],
             ),
@@ -667,15 +689,11 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     final costPP = backendTotal != null && c.n > 0
         ? backendTotal / c.n
         : c.costPerPortion;
-    final foodCost = _preview?.foodCostPct;
     final cards = [
       _kpi('Себестоимость порции', '${_fmt(costPP)} ₸', accent: true),
-      if (foodCost != null)
-        _kpi('Food cost', _pct(foodCost / 100, 1))
-      else
-        _kpi('Себестоимость 1 кг', '${_fmt(c.costPerKg)} ₸'),
-      _kpi('Сырьё на смену · брутто', '${_fmt(c.bruttoKg, 1)} кг'),
-      _kpi('Выход готового', _pct(c.yieldPct, 0)),
+      _kpi('Себестоимость всего', '${_fmt(c.cost)} ₸'),
+      _kpi('Порций', '${c.n}'),
+      _kpi('Выход на порцию', _fmtQty(_outputPerPortion, _outputUnit)),
     ];
     final cols = narrow ? 2 : 4;
     return LayoutBuilder(builder: (context, cons) {
@@ -726,6 +744,7 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
                   style: TextStyle(color: _dim, fontSize: 12))),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ConstrainedBox(
               constraints: const BoxConstraints(minWidth: 520),
               child: _recipeTable(c),
@@ -741,9 +760,9 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
     const heads = [
       '№',
       'Продукт',
-      'Брутто, кг',
-      'Нетто, кг',
-      'Выход, кг',
+      'Брутто',
+      'Нетто',
+      'Выход',
       'Цена ₸/ед',
       'Сумма, ₸'
     ];
@@ -785,7 +804,8 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
         _cell(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(r.name, style: TextStyle(color: _txt, fontSize: 13)),
           if (r.unit != null)
-            Text('ед: ${r.unit}', style: TextStyle(color: _dim2, fontSize: 11)),
+            Text('ед: ${_unitRu(r.unit)}',
+                style: TextStyle(color: _dim2, fontSize: 11)),
           ..._ingHints(r.ingredientId),
         ])),
         _numCell(_fmt(r.bruttoKg, 1)),
@@ -828,9 +848,10 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
                 color: _txt, fontSize: 13, fontWeight: FontWeight.w700))),
-        _numCell(_fmt(c.bruttoKg, 1), weight: FontWeight.w700),
-        _numCell(_fmt(c.nettoKg, 1), weight: FontWeight.w700, color: _dim),
-        _numCell(_fmt(c.outKg, 1), weight: FontWeight.w700, color: _accent),
+        // Брутто/нетто/выход не суммируем — единицы у строк разные (шт/г/кг).
+        _cell(const SizedBox()),
+        _cell(const SizedBox()),
+        _cell(const SizedBox()),
         _cell(const SizedBox()),
         _numCell(_fmt(c.cost), weight: FontWeight.w800, color: _accent),
       ],
@@ -1412,8 +1433,12 @@ class _ProductionCardScreenState extends State<ProductionCardScreen> {
   Widget _numCell(String t, {Color? color, FontWeight? weight}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
         child: Text(t,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.right,
-            style: TextStyle(color: color ?? _txt, fontWeight: weight)),
+            style: TextStyle(
+                color: color ?? _txt, fontSize: 13, fontWeight: weight)),
       );
 
   Widget _smallNum(double value, ValueChanged<double> onChange,
