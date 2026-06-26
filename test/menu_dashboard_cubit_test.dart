@@ -62,7 +62,8 @@ void main() {
     when(() => repo.createTechnicalCard(
           draft: any(named: 'draft'),
           submitForApproval: any(named: 'submitForApproval'),
-        )).thenAnswer((_) async => null);
+        )).thenAnswer(
+        (_) async => const TechnicalCardModel(id: 555, name: 'Новое блюдо'));
     when(() => repo.saveTechnicalCard(
           id: any(named: 'id'),
           draft: any(named: 'draft'),
@@ -85,34 +86,38 @@ void main() {
   });
 
   // ── Создание ──────────────────────────────────────────────────────────
-  test('создание + «На проверку» → createTechnicalCard(submit=true)', () async {
+  test('создание + «На проверку» → POST create затем POST /submit', () async {
     final cubit = build(UserRole.chef);
     cubit.newDraft();
     cubit.state.editorDraft!
       ..name = 'Новое блюдо'
       ..categoryId = 5
+      ..salePrice = 100
       ..ingredients.add(_ing());
 
     final res = await cubit.saveAndSign(submit: true);
 
     expect(res.error, isNull);
     verify(() => repo.createTechnicalCard(
-        draft: any(named: 'draft'), submitForApproval: true)).called(1);
+        draft: any(named: 'draft'), submitForApproval: false)).called(1);
+    verify(() => repo.submitTechnicalCard(555)).called(1);
     await cubit.close();
   });
 
-  test('создание как черновик → createTechnicalCard(submit=false)', () async {
+  test('создание как черновик → POST create, без /submit', () async {
     final cubit = build(UserRole.chef);
     cubit.newDraft();
     cubit.state.editorDraft!
       ..name = 'Черновик'
       ..categoryId = 5
+      ..salePrice = 100
       ..ingredients.add(_ing());
 
     await cubit.saveAndSign(submit: false);
 
     verify(() => repo.createTechnicalCard(
         draft: any(named: 'draft'), submitForApproval: false)).called(1);
+    verifyNever(() => repo.submitTechnicalCard(any()));
     await cubit.close();
   });
 

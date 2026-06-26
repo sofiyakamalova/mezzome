@@ -19,4 +19,10 @@ abstract class DishesApi {
   /// Категории меню — источник слотов при составлении плана.
   @GET('/common/menu/categories')
   Future<MenuCategoryListResponse> getCommonMenuCategories();
+
+  /// Создание блюда меню (`POST /chef/menu/items`, `dto.MenuItemCreateRequest`)
+  /// — для новой техкарты с нуля: сначала menu item, затем ТК с его id.
+  /// Обязательны name/category_id/price. Ответ сырой (нет в swagger) → берём id.
+  @POST('/chef/menu/items')
+  Future<dynamic> createMenuItem(@Body() Map<String, dynamic> body);
 }

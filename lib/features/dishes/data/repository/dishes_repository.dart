@@ -245,6 +245,40 @@ class DishesRepository {
     }
   }
 
+  /// Создание блюда меню (`POST /chef/menu/items`) — для новой техкарты с нуля.
+  /// Возвращает `menu_item_id` (из `item.id`), либо null при ошибке разбора.
+  Future<int?> createMenuItem({
+    required String name,
+    required int categoryId,
+    double price = 0,
+    int? weight,
+  }) async {
+    // Бэк требует price > 0 (в Go `required` отвергает 0). У техкарты-норматива
+    // цены продажи нет → ставим плейсхолдер и is_available: false, чтобы блюдо
+    // не продавалось, пока овнер не выставит реальную цену.
+    final body = <String, dynamic>{
+      'name': name,
+      'category_id': categoryId,
+      'price': price > 0 ? price : 1,
+      'is_available': false,
+      if (weight != null && weight > 0) 'weight': weight,
+    };
+    appLogger.i('POST /chef/menu/items: $body');
+    final res = await _dishesApi.createMenuItem(body);
+    final id = _menuItemIdFrom(res);
+    appLogger.i('Menu item created: id=$id');
+    return id;
+  }
+
+  int? _menuItemIdFrom(dynamic res) {
+    if (res is! Map) return null;
+    final m = res.map((k, v) => MapEntry('$k', v));
+    final item = m['item'];
+    if (item is Map && item['id'] is num) return (item['id'] as num).toInt();
+    if (m['id'] is num) return (m['id'] as num).toInt();
+    return null;
+  }
+
   /// Создаёт производственный план. Менеджер шлёт на свою ручку
   /// (`POST /manager/production-plans`), chef — на `POST /chef/production-plans`.
   /// Тело запроса у обеих ручек одинаковое.

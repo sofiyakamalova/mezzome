@@ -167,6 +167,8 @@ class _EditFormState extends State<_EditForm> {
       TextEditingController(text: '${_d.portions}');
   late final TextEditingController _reason =
       TextEditingController(text: _d.editReason);
+  late final TextEditingController _price = TextEditingController(
+      text: _d.salePrice == null ? '' : _trim(_d.salePrice!));
 
   bool _uploading = false;
   bool _saving = false;
@@ -177,6 +179,7 @@ class _EditFormState extends State<_EditForm> {
     _output.dispose();
     _portions.dispose();
     _reason.dispose();
+    _price.dispose();
     super.dispose();
   }
 
@@ -304,6 +307,17 @@ class _EditFormState extends State<_EditForm> {
                             ),
                         ],
                         onChanged: (v) => setState(() => _d.categoryId = v),
+                      ),
+                    ],
+                    if (widget.isCreate) ...[
+                      const SizedBox(height: AppSpacing.sm),
+                      _Field(
+                        label: '${'tcpFieldPrice'.tr()} *',
+                        controller: _price,
+                        enabled: !_readOnly,
+                        keyboardType: TextInputType.number,
+                        onChanged: (v) => _d.salePrice =
+                            double.tryParse(v.replaceAll(',', '.')),
                       ),
                     ],
                     const SizedBox(height: AppSpacing.sm),
@@ -731,6 +745,7 @@ class _Field extends StatelessWidget {
     this.enabled = true,
     this.keyboardType,
     this.maxLines = 1,
+    this.onChanged,
   });
 
   final String label;
@@ -738,6 +753,7 @@ class _Field extends StatelessWidget {
   final bool enabled;
   final TextInputType? keyboardType;
   final int maxLines;
+  final ValueChanged<String>? onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -746,6 +762,7 @@ class _Field extends StatelessWidget {
       enabled: enabled,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      onChanged: onChanged,
       decoration: InputDecoration(
         labelText: label,
         isDense: true,

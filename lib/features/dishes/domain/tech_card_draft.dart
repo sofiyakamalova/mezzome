@@ -52,6 +52,10 @@ class TechCardDraft {
 
   /// `category_id` — нужен при создании техкарты с нуля.
   int? categoryId;
+
+  /// Цена продажи блюда (₸) — нужна при создании нового блюда (POST menu/items).
+  /// Только для создания; у существующей техкарты не используется.
+  double? salePrice;
   double lossPct;
   String notes;
   List<TechCardIngredientDraft> ingredients;

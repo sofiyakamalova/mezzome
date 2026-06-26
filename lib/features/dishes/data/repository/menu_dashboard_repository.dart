@@ -387,10 +387,21 @@ class MenuDashboardRepository {
     required TechCardDraft draft,
     bool submitForApproval = false,
   }) async {
+    // Новое блюдо с нуля: сначала создаём menu item, затем техкарту с его id —
+    // иначе ТК не привяжется к блюду и не попадёт в план (требование бэка).
+    var menuItemId = draft.menuItemId;
+    if (menuItemId == null && draft.categoryId != null) {
+      menuItemId = await _dishesRepository.createMenuItem(
+        name: draft.name,
+        categoryId: draft.categoryId!,
+        price: draft.salePrice ?? 0,
+        weight: draft.outputGrams.round(),
+      );
+    }
     final request = CreateTechnicalCardRequest(
       name: draft.name,
       categoryId: draft.categoryId,
-      menuItemId: draft.menuItemId,
+      menuItemId: menuItemId,
       // Колонка description NOT NULL — шлём пустую строку, не null.
       description: draft.notes,
       basePortions: draft.portions.toDouble(),

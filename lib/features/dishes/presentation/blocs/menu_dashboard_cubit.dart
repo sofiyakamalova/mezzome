@@ -348,6 +348,10 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
     if (draft.id == null && draft.categoryId == null) {
       return SaveResult(error: 'tcpCategoryRequired'.tr());
     }
+    // Новое блюдо требует цену продажи (бэк создаёт menu item, price > 0).
+    if (draft.id == null && (draft.salePrice == null || draft.salePrice! <= 0)) {
+      return SaveResult(error: 'tcpPriceRequired'.tr());
+    }
     final validationKey = draft.validationErrorKey();
     if (validationKey != null) {
       appLogger.w('saveAndSign: rejected by client validation: $validationKey');
@@ -390,10 +394,15 @@ class MenuDashboardCubit extends Cubit<MenuDashboardState> {
           );
         }
       } else {
-        // Создание техкарты с нуля (POST). submit=false → черновик; true →
-        // сразу на согласование. (Бэкенд может авто-апрувить созданную карту.)
+        // Создание с нуля: бэк сам создаёт menu item → техкарту с его id.
+        // Затем, если «На проверку», отправляем отдельной ручкой POST /submit.
         appLogger.i('saveAndSign: POST new technical-card (submit=$submit)…');
-        await _repo.createTechnicalCard(draft: draft, submitForApproval: submit);
+        final created =
+            await _repo.createTechnicalCard(draft: draft, submitForApproval: false);
+        if (submit && created?.id != null) {
+          appLogger.i('saveAndSign: POST submit ${created!.id}…');
+          await _repo.submitTechnicalCard(created.id);
+        }
       }
     } on DioException catch (error) {
       if (error.response != null) {

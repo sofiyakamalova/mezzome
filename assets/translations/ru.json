@@ -1,4 +1,6 @@
 {
+  "tcpFieldPrice": "Цена продажи, ₸",
+  "tcpPriceRequired": "Укажите цену продажи",
   "menuGridSlot": "Слот",
   "menuGridEmptySlot": "На этот слот блюд не запланировано.",
   "serviceNightLunch": "Ночной обед",
